@@ -7,7 +7,7 @@ This means that its various protocols often:
 * handle reliability of the connection and provide mechanisms for recovery from packet loss.
 
 ## Sockets
-A lot of stuff was, obviously, derivative of the primitives of the pre-existing telephone networks (one day I'd like to expand on this). A server (network node), on one end, opens up a network *socket* (or a "handle"), typically following the API laid out by [Berkeley sockets](https://en.wikipedia.org/wiki/Berkeley_sockets). These sockets are specified by an *address*, e.g. 127.0.0.1:8080, a pair of an IP address and a port number. Notice the similarity to a phone number and extension pair here.
+A lot of stuff was, obviously, derivative of the primitives of the pre-existing telephone networks (one day I'd like to expand on this). A server (network node), on one end, opens up a network *socket* (or a "handle"), typically following the API laid out by [Berkeley sockets](https://en.wikipedia.org/wiki/Berkeley_sockets). Sockets were initially designated in [RFC 147](https://tools.ietf.org/html/rfc147). These sockets are specified by an *address*, e.g. 127.0.0.1:8080, a pair of an IP address and a port number. Notice the similarity to a phone number and extension pair here.
 
 In _UNIX_, everything is a file. So, similarly, a network socket on a server is really just a [file descriptor](https://en.wikipedia.org/wiki/File_descriptor). The `socket` [function](https://pubs.opengroup.org/onlinepubs/007908775/xns/socket.html) in `sys/socket.h` returns a file descriptor:
 ```c
@@ -36,12 +36,20 @@ macro_rules! impl_from_raw_fd {
 }
 impl_from_raw_fd! { TcpStream TcpListener UdpSocket }
 ```
+So, our various socket primitives in Rust will implement the `IntoRawFd` and `FromRawFd`, as above.
 
 Just having a socket isn't enough, obviously. How are we supposed to handle the raw bytes that someone on the other end of the "line" sends us?
 
 That's where this layer comes in...
 
 ## Packets
+In the Internet Protocol (IP), a packet is the base object for sending data from one place to another. At the transport layer, a protocol-specific header wraps the data we are attempting to send, visualized: 
+
+<p align="center">
+<img src=https://upload.wikimedia.org/wikipedia/commons/3/3b/UDP_encapsulation.svg alt="Packet" height="350" width="560"/>
+</p>
+
+The specifics of each protocol is discussed in their respective sections.
 
 ## Contents
 Here, we have some writing on two protocols that often get referenced as Layer 4 transport protocols, as defined in the list below:
