@@ -3,18 +3,6 @@
 Defined by Internet Engineering Task Force [RFC 768](https://tools.ietf.org/html/rfc768).
 
 
-
-
-[link](https://doc.rust-lang.org/src/std/sys/unix/ext/net.rs.html#817-822)
-```rust
-impl FromRawFd for net::UdpSocket {
-    unsafe fn from_raw_fd(fd: RawFd) -> net::UdpSocket {
-        let socket = sys::net::Socket::from_inner(fd);
-        net::UdpSocket::from_inner(sys_common::net::UdpSocket::from_inner(socket))
-    }
-}
-```
-
 ## Examples
 Below we discuss the two example projects demonstrating the use of the UDP protocol. The first is an [echo](###echo) server and the second is a simple pass-through [DNS](###dns).
 
