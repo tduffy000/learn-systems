@@ -4,7 +4,7 @@ use std::str;
 use std::sync::{Mutex, Arc};
 use std::io::{Read, Write};
 
-use crate::account::{Account, AccountStore, Result};
+use crate::account::{self, Account, AccountStore, Result};
 
 #[derive(Debug, Clone, Copy)]
 enum Command {
@@ -27,6 +27,17 @@ impl From<&str> for Command {
     }
 }
 
+enum Status {
+    Success,
+    Failure,
+}
+
+struct Response {
+    status: Status,
+    msg: String,
+    acct: Option<Account>
+}
+
 pub struct SessionManager {
     accounts: Arc<Mutex<AccountStore>>,
     authed: bool,
@@ -40,16 +51,38 @@ impl SessionManager {
         SessionManager { accounts, authed: false, user: None , command_mode: None}
     }
 
-    fn handle_login(mut self, user: String, password: String) -> Result<Account> {
-        
+    fn parse_up_string(self, up: &str) -> (&str, &str) {
+        let up: Vec<&str> = up.split(":").collect();
+        (up[0], up[1])
     }
 
-    fn handle_create(mut self, user: String, password: String) -> Result<Account> {
+    fn handle_login(mut self, user: &str, password: &str) -> Response {
+        let accts = self.accounts.lock().unwrap();
+        if self.user.is_some() {
+            return Response { status: Status::Failure, msg: "already logged in".to_string(), acct: None }
+        }
 
+        match accts.get_account(user.to_string()) {
+            Ok(acct) => {
+                if acct.is_correct_password(password) {
+                    self.authed = true;
+                    self.user = Some(user.to_string());
+                    return Response { status: Status::Success, msg: "login successful!".to_string(), acct: Some(acct) }
+                } else {
+                    return Response { status: Status::Success, msg: "incorrect password".to_string(), acct: None }
+                }
+                
+            }
+            Err(_) => Response { status: Status::Failure, msg: "no such account".to_string(), acct: None }
+        }
     }
 
-    fn handle_update(mut self, amount: f32) -> Result<Account> {
+    fn handle_create(mut self, user: String, password: String) -> Response {
+        Response { status: Status::Failure, msg: "unimplemented".to_string(), acct: None }
+    }
 
+    fn handle_update(mut self, amount: f32) -> Response {
+        Response { status: Status::Failure, msg: "unimplemented".to_string(), acct: None }
     }
 
     pub fn handle_stream(mut self, mut stream: TcpStream) {
@@ -68,9 +101,7 @@ impl SessionManager {
                     Some(cmd) => { // awaiting data for a command
                         match cmd {
                             Command::Login => {
-                                let up: Vec<&str> = data.split(":").collect();
-                                let user = up[0];
-                                let password = up[1];
+                                let (user, password) = self.parse_up_string(data);
                                 self.handle_login(user, password);
                             },
                             Command::Create => {
@@ -80,7 +111,7 @@ impl SessionManager {
 
                             }, 
                             Command::Quit => {
-                                
+
                             }, 
                             Command::Unimpl => {
 
