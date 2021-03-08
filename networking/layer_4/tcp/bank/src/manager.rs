@@ -38,17 +38,50 @@ struct Response {
     acct: Option<Account>
 }
 
+#[derive(Debug)]
+struct Session {
+    authed: bool,
+    user: Option<String>,
+    command: Option<Command>,
+}
+
+impl Session {
+    fn new(authed: bool, user: Option<String>, command: Option<Command>) -> Session {
+        Session { authed, user, command }
+    }
+
+    pub fn is_authed(self) -> bool {
+        self.authed
+    }
+
+    pub fn has_user(self) -> bool {
+        self.user.is_some()
+    }
+
+    pub fn user_logged_in(mut self, user: String) {
+        self.authed = true;
+        self.user = Some(user);
+    }
+
+    pub fn get_command(self) -> Option<Command> {
+        self.command
+    }
+
+    pub fn set_command(mut self, cmd: Command) {
+        self.command = Some(cmd);
+    }
+}
+
 pub struct SessionManager {
     accounts: Arc<Mutex<AccountStore>>,
-    authed: bool,
-    user: Option<String>, // the key in AccountStore
-    command_mode: Option<Command>,
+    session: Session,
 }
 
 impl SessionManager {
 
     pub fn new(accounts: Arc<Mutex<AccountStore>>) -> SessionManager {
-        SessionManager { accounts, authed: false, user: None , command_mode: None}
+        let session = Session::new(false, None, None);
+        SessionManager { accounts, session }
     }
 
     fn parse_up_string(self, up: &str) -> (&str, &str) {
@@ -58,15 +91,14 @@ impl SessionManager {
 
     fn handle_login(mut self, user: &str, password: &str) -> Response {
         let accts = self.accounts.lock().unwrap();
-        if self.user.is_some() {
+        if self.session.has_user() {
             return Response { status: Status::Failure, msg: "already logged in".to_string(), acct: None }
         }
 
         match accts.get_account(user.to_string()) {
             Ok(acct) => {
                 if acct.is_correct_password(password) {
-                    self.authed = true;
-                    self.user = Some(user.to_string());
+                    self.session.user_logged_in(user.to_string());
                     return Response { status: Status::Success, msg: "login successful!".to_string(), acct: Some(acct) }
                 } else {
                     return Response { status: Status::Success, msg: "incorrect password".to_string(), acct: None }
@@ -97,7 +129,7 @@ impl SessionManager {
                     Err(_) => "nope",
                 };
 
-                match self.command_mode {
+                match self.session.get_command() {
                     Some(cmd) => { // awaiting data for a command
                         match cmd {
                             Command::Login => {
@@ -119,7 +151,7 @@ impl SessionManager {
                         }
                     },
                     None => { // accepting commands
-                        self.command_mode = Some(Command::from(data))
+                        self.session.set_command(Command::from(data))
                     },
                 }
                 true
