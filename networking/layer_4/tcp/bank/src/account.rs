@@ -67,21 +67,21 @@ impl AccountStore {
         }
     }
 
-    pub fn get_account(&self, user: String) -> Result<Account> {
+    pub fn get_account(&self, user: String) -> Option<Account> {
         match self.accounts.get(&user) {
-            Some(account) => Ok(*account),
-            None => Err("No such account".to_string()),
+            Some(account) => Some(*account),
+            None => None,
         }
     }
 
-    pub fn update_account(mut self, user: String, account: Account) -> Result<Account> {
+    pub fn update_account(&mut self, user: String, account: Account) -> Result<Account> {
         match self.accounts.insert(user, account) {
             Some(acct) => Ok(acct),
             None => Err("No such account".to_string()),
         }
     }
 
-    pub fn add_account(mut self, user: String, account: Account) -> Result<Account> {
+    pub fn add_account(&mut self, user: String, account: Account) -> Result<Account> {
         match self.accounts.insert(user, account) {
             Some(_) => Err("Account exists".to_string()),
             None => Ok(account),

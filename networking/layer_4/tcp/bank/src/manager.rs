@@ -66,7 +66,7 @@ fn parse_up_string(up: &str) -> (&str, &str) {
 
 impl SessionManager {
     pub fn new(accounts: Arc<Mutex<AccountStore>>) -> SessionManager {
-        SessionManager { accounts: accounts }
+        SessionManager { accounts }
     }
 
     fn handle_login(
@@ -86,10 +86,14 @@ impl SessionManager {
             );
         }
 
-        
-        let account = self.accounts.lock().unwrap().get_account(user.to_string()).clone();
+        let account = self
+            .accounts
+            .lock()
+            .unwrap()
+            .get_account(user.to_string())
+            .clone();
         match account {
-            Ok(acct) => {
+            Some(acct) => {
                 if acct.is_correct_password(password) {
                     session.authed = true;
                     session.user = Some(user.to_string());
@@ -112,7 +116,7 @@ impl SessionManager {
                     );
                 }
             }
-            Err(_) => (
+            None => (
                 session,
                 Response {
                     status: Status::Failure,
@@ -123,11 +127,39 @@ impl SessionManager {
         }
     }
 
-    fn handle_create(mut self, user: String, password: String) -> Response {
-        Response {
-            status: Status::Failure,
-            msg: "unimplemented".to_string(),
-            acct: None,
+    fn handle_create(
+        &self,
+        mut session: Box<Session>,
+        user: &str,
+        password: &str,
+    ) -> (Box<Session>, Response) {
+        let mut accounts = self.accounts.lock().unwrap();
+
+        let account = accounts.get_account(user.to_string()).clone();
+        match account {
+            Some(acct) => {
+                return (
+                    session,
+                    Response {
+                        status: Status::Failure,
+                        msg: "account exists".to_string(),
+                        acct: None,
+                    },
+                )
+            }
+            None => {
+                let acct = Account::new(password);
+                accounts.add_account(user.to_string(), acct);
+                session.user = Some(user.to_string());
+                (
+                    session,
+                    Response {
+                        status: Status::Success,
+                        msg: "account created".to_string(),
+                        acct: Some(acct),
+                    },
+                )
+            }
         }
     }
 
@@ -157,11 +189,14 @@ impl SessionManager {
                         match cmd {
                             Command::Login => {
                                 let (user, password) = parse_up_string(data);
-                                let (s, res) =
-                                    self.handle_login(session, user, password);
+                                let (s, _) = self.handle_login(session, user, password);
                                 session = s; // can you do this in one line?
                             }
-                            Command::Create => {}
+                            Command::Create => {
+                                let (user, password) = parse_up_string(data);
+                                let (s, _) = self.handle_create(session, user, password);
+                                session = s;
+                            }
                             Command::Update => {}
                             Command::Quit => {}
                             Command::Unimpl => {}
