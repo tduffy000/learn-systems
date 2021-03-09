@@ -27,6 +27,19 @@ impl From<&str> for Command {
     }
 }
 
+impl Command {
+    fn get_response(self) -> String {
+        let s = match (self) {
+            Create => "give me a <user>:<password>\n",
+            Login => "give me a <user>:<password>\n",
+            Update => "todo",
+            Quit => "terminating...\n",
+            Unimpl => "unimplemented!\n",
+        };
+        s.to_string()
+    }
+}
+
 enum Status {
     Success,
     Failure,
@@ -174,28 +187,29 @@ impl SessionManager {
     pub fn handle_stream(&mut self, mut stream: TcpStream) {
         let mut session = Box::new(Session::default());
         let mut buf = [0; 1024];
+
         while match stream.read(&mut buf) {
             Ok(n) => {
-                // parse the response as a string from some bytes
-                stream.write(&buf[0..n]).unwrap();
                 let data = match str::from_utf8(&buf[0..n]) {
                     Ok(s) => s,
                     Err(_) => "nope",
                 };
-
+                
                 match session.command {
                     Some(cmd) => {
                         // awaiting data for a command
                         match cmd {
                             Command::Login => {
                                 let (user, password) = parse_up_string(data);
-                                let (s, _) = self.handle_login(session, user, password);
+                                let (s, res) = self.handle_login(session, user, password);
                                 session = s; // can you do this in one line?
+                                stream.write(res.msg.as_bytes()).unwrap();
                             }
                             Command::Create => {
                                 let (user, password) = parse_up_string(data);
-                                let (s, _) = self.handle_create(session, user, password);
+                                let (s, res) = self.handle_create(session, user, password);
                                 session = s;
+                                stream.write(res.msg.as_bytes()).unwrap();
                             }
                             Command::Update => {}
                             Command::Quit => {}
@@ -205,6 +219,8 @@ impl SessionManager {
                     None => {
                         // accepting commands
                         session.command = Some(Command::from(data));
+                        let msg = session.command.unwrap().get_response();
+                        stream.write(msg.as_bytes()).unwrap();
                     }
                 }
                 true
