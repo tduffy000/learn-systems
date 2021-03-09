@@ -1,8 +1,8 @@
 use std::convert::From;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::str;
-use std::sync::{Mutex, Arc};
-use std::io::{Read, Write};
+use std::sync::{Arc, Mutex};
 
 use crate::account::{self, Account, AccountStore, Result};
 
@@ -35,93 +35,115 @@ enum Status {
 struct Response {
     status: Status,
     msg: String,
-    acct: Option<Account>
+    acct: Option<Account>,
 }
 
-#[derive(Debug)]
-struct Session {
+#[derive(Debug, Clone)]
+pub struct Session {
     authed: bool,
     user: Option<String>,
     command: Option<Command>,
 }
 
-impl Session {
-    fn new(authed: bool, user: Option<String>, command: Option<Command>) -> Session {
-        Session { authed, user, command }
-    }
-
-    pub fn is_authed(self) -> bool {
-        self.authed
-    }
-
-    pub fn has_user(self) -> bool {
-        self.user.is_some()
-    }
-
-    pub fn user_logged_in(mut self, user: String) {
-        self.authed = true;
-        self.user = Some(user);
-    }
-
-    pub fn get_command(self) -> Option<Command> {
-        self.command
-    }
-
-    pub fn set_command(mut self, cmd: Command) {
-        self.command = Some(cmd);
+impl Default for Session {
+    fn default() -> Self {
+        Session {
+            authed: false,
+            user: None,
+            command: None,
+        }
     }
 }
 
 pub struct SessionManager {
     accounts: Arc<Mutex<AccountStore>>,
-    session: Session,
+}
+
+fn parse_up_string(up: &str) -> (&str, &str) {
+    let up: Vec<&str> = up.split(":").collect();
+    (up[0], up[1])
 }
 
 impl SessionManager {
-
     pub fn new(accounts: Arc<Mutex<AccountStore>>) -> SessionManager {
-        let session = Session::new(false, None, None);
-        SessionManager { accounts, session }
+        SessionManager { accounts }
     }
 
-    fn parse_up_string(self, up: &str) -> (&str, &str) {
-        let up: Vec<&str> = up.split(":").collect();
-        (up[0], up[1])
-    }
-
-    fn handle_login(mut self, user: &str, password: &str) -> Response {
-        let accts = self.accounts.lock().unwrap();
-        if self.session.has_user() {
-            return Response { status: Status::Failure, msg: "already logged in".to_string(), acct: None }
+    fn handle_login(
+        self,
+        accounts: &Arc<Mutex<AccountStore>>,
+        mut session: Box<Session>,
+        user: &str,
+        password: &str,
+    ) -> (Box<Session>, Response) {
+        let accts = accounts.lock().unwrap();
+        if session.user.is_some() {
+            return (
+                session,
+                Response {
+                    status: Status::Failure,
+                    msg: "already logged in".to_string(),
+                    acct: None,
+                },
+            );
         }
 
         match accts.get_account(user.to_string()) {
             Ok(acct) => {
                 if acct.is_correct_password(password) {
-                    self.session.user_logged_in(user.to_string());
-                    return Response { status: Status::Success, msg: "login successful!".to_string(), acct: Some(acct) }
+                    session.authed = true;
+                    session.user = Some(user.to_string());
+                    return (
+                        session,
+                        Response {
+                            status: Status::Success,
+                            msg: "login successful!".to_string(),
+                            acct: Some(acct),
+                        },
+                    );
                 } else {
-                    return Response { status: Status::Success, msg: "incorrect password".to_string(), acct: None }
+                    return (
+                        session,
+                        Response {
+                            status: Status::Success,
+                            msg: "incorrect password".to_string(),
+                            acct: None,
+                        },
+                    );
                 }
-                
             }
-            Err(_) => Response { status: Status::Failure, msg: "no such account".to_string(), acct: None }
+            Err(_) => (
+                session,
+                Response {
+                    status: Status::Failure,
+                    msg: "no such account".to_string(),
+                    acct: None,
+                },
+            ),
         }
     }
 
     fn handle_create(mut self, user: String, password: String) -> Response {
-        Response { status: Status::Failure, msg: "unimplemented".to_string(), acct: None }
+        Response {
+            status: Status::Failure,
+            msg: "unimplemented".to_string(),
+            acct: None,
+        }
     }
 
     fn handle_update(mut self, amount: f32) -> Response {
-        Response { status: Status::Failure, msg: "unimplemented".to_string(), acct: None }
+        Response {
+            status: Status::Failure,
+            msg: "unimplemented".to_string(),
+            acct: None,
+        }
     }
 
-    pub fn handle_stream(mut self, mut stream: TcpStream) {
+    pub fn handle_stream(&mut self, mut stream: TcpStream) {
+        let mut session = Box::new(Session::default());
         let mut buf = [0; 1024];
         while match stream.read(&mut buf) {
             Ok(n) => {
-                
                 // parse the response as a string from some bytes
                 stream.write(&buf[0..n]).unwrap();
                 let data = match str::from_utf8(&buf[0..n]) {
@@ -129,37 +151,30 @@ impl SessionManager {
                     Err(_) => "nope",
                 };
 
-                match self.session.get_command() {
-                    Some(cmd) => { // awaiting data for a command
+                match session.command {
+                    Some(cmd) => {
+                        // awaiting data for a command
                         match cmd {
                             Command::Login => {
-                                let (user, password) = self.parse_up_string(data);
-                                self.handle_login(user, password);
-                            },
-                            Command::Create => {
-
-                            }, 
-                            Command::Update => {
-
-                            }, 
-                            Command::Quit => {
-
-                            }, 
-                            Command::Unimpl => {
-
-                            },
+                                let (user, password) = parse_up_string(data);
+                                let (s, res) =
+                                    self.handle_login(&self.accounts, session, user, password);
+                                session = s; // can you do this in one line?
+                            }
+                            Command::Create => {}
+                            Command::Update => {}
+                            Command::Quit => {}
+                            Command::Unimpl => {}
                         }
-                    },
-                    None => { // accepting commands
-                        self.session.set_command(Command::from(data))
-                    },
+                    }
+                    None => {
+                        // accepting commands
+                        session.command = Some(Command::from(data));
+                    }
                 }
                 true
-            },
-            Err(e) => {
-
-                false
-            },
+            }
+            Err(e) => false,
         } {}
     }
 }

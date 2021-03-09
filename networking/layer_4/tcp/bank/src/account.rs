@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 pub type Result<T> = std::result::Result<T, String>;
@@ -11,12 +11,14 @@ pub struct Account {
 }
 
 impl Account {
-
     pub fn new(pass: &str) -> Account {
         let mut hasher = DefaultHasher::new();
         pass.hash(&mut hasher);
         let hash = hasher.finish();
-        Account {balance: 0.0, password_hash: hash}
+        Account {
+            balance: 0.0,
+            password_hash: hash,
+        }
     }
 
     fn hash_password(self, pass: &str) -> u64 {
@@ -35,8 +37,8 @@ impl Account {
     }
 
     pub fn increment_balance(mut self, amount: f32) -> Result<f32> {
-        if (self.balance + amount) < 0.0 {        
-            return Err("Can't have a negative balance".to_string())
+        if (self.balance + amount) < 0.0 {
+            return Err("Can't have a negative balance".to_string());
         }
         self.balance += amount;
         Ok(self.balance)
@@ -59,9 +61,10 @@ pub struct AccountStore {
 
 // implement drop()
 impl AccountStore {
-
     pub fn new() -> AccountStore {
-        AccountStore { accounts: HashMap::new() }
+        AccountStore {
+            accounts: HashMap::new(),
+        }
     }
 
     pub fn get_account(self, user: String) -> Result<Account> {
