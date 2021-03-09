@@ -66,17 +66,15 @@ fn parse_up_string(up: &str) -> (&str, &str) {
 
 impl SessionManager {
     pub fn new(accounts: Arc<Mutex<AccountStore>>) -> SessionManager {
-        SessionManager { accounts }
+        SessionManager { accounts: accounts }
     }
 
     fn handle_login(
-        self,
-        accounts: &Arc<Mutex<AccountStore>>,
+        &self,
         mut session: Box<Session>,
         user: &str,
         password: &str,
     ) -> (Box<Session>, Response) {
-        let accts = accounts.lock().unwrap();
         if session.user.is_some() {
             return (
                 session,
@@ -88,7 +86,9 @@ impl SessionManager {
             );
         }
 
-        match accts.get_account(user.to_string()) {
+        
+        let account = self.accounts.lock().unwrap().get_account(user.to_string()).clone();
+        match account {
             Ok(acct) => {
                 if acct.is_correct_password(password) {
                     session.authed = true;
@@ -158,7 +158,7 @@ impl SessionManager {
                             Command::Login => {
                                 let (user, password) = parse_up_string(data);
                                 let (s, res) =
-                                    self.handle_login(&self.accounts, session, user, password);
+                                    self.handle_login(session, user, password);
                                 session = s; // can you do this in one line?
                             }
                             Command::Create => {}

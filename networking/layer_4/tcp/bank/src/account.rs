@@ -67,7 +67,7 @@ impl AccountStore {
         }
     }
 
-    pub fn get_account(self, user: String) -> Result<Account> {
+    pub fn get_account(&self, user: String) -> Result<Account> {
         match self.accounts.get(&user) {
             Some(account) => Ok(*account),
             None => Err("No such account".to_string()),
