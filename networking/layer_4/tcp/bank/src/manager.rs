@@ -17,7 +17,7 @@ enum Command {
 
 impl From<&str> for Command {
     fn from(s: &str) -> Self {
-        match s {
+        match s.trim_end() {
             "create" => Command::Create,
             "update" => Command::Update,
             "login" => Command::Login,
@@ -194,15 +194,14 @@ impl SessionManager {
                     Ok(s) => s,
                     Err(_) => "nope",
                 };
-                
+
                 match session.command {
                     Some(cmd) => {
-                        // awaiting data for a command
                         match cmd {
                             Command::Login => {
                                 let (user, password) = parse_up_string(data);
                                 let (s, res) = self.handle_login(session, user, password);
-                                session = s; // can you do this in one line?
+                                session = s;
                                 stream.write(res.msg.as_bytes()).unwrap();
                             }
                             Command::Create => {
@@ -215,9 +214,12 @@ impl SessionManager {
                             Command::Quit => {}
                             Command::Unimpl => {}
                         }
+                        session.command = None;
+                        for el in buf.iter_mut() {
+                            *el = 0;
+                        }
                     }
                     None => {
-                        // accepting commands
                         session.command = Some(Command::from(data));
                         let msg = session.command.unwrap().get_response();
                         stream.write(msg.as_bytes()).unwrap();
