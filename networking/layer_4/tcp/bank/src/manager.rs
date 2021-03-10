@@ -12,6 +12,7 @@ enum Command {
     Login,
     Update,
     Quit,
+    Noop,
     Unimpl,
 }
 
@@ -22,6 +23,7 @@ impl From<&str> for Command {
             "update" => Command::Update,
             "login" => Command::Login,
             "quit" => Command::Quit,
+            "" => Command::Noop,
             _ => Command::Unimpl,
         }
     }
@@ -34,6 +36,7 @@ impl Command {
             Login => "give me a <user>:<password>\n",
             Update => "todo",
             Quit => "terminating...\n",
+            Noop => "continuing...\n",
             Unimpl => "unimplemented!\n",
         };
         s.to_string()
@@ -194,7 +197,7 @@ impl SessionManager {
                     Ok(s) => s,
                     Err(_) => "nope",
                 };
-
+                
                 match session.command {
                     Some(cmd) => {
                         match cmd {
@@ -213,6 +216,7 @@ impl SessionManager {
                             Command::Update => {}
                             Command::Quit => {}
                             Command::Unimpl => {}
+                            Command::Noop => {}
                         }
                         session.command = None;
                         for el in buf.iter_mut() {
