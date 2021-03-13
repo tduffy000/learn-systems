@@ -1,4 +1,3 @@
-use core::fmt;
 use std::convert::From;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
@@ -166,6 +165,7 @@ impl SessionManager {
                 let acct = Account::new(password);
                 accounts.add_account(user.to_string(), acct);
                 session.user = Some(user.to_string());
+                session.authed = true;
                 (
                     session,
                     Response {
@@ -200,21 +200,24 @@ impl SessionManager {
                 },
             );
         }
+        let user = session.user.unwrap();
         let mut accounts = self.accounts.lock().unwrap();
-        let mut account = accounts
-            .get_account(session.user.unwrap().to_string())
-            .clone();
+        let mut account = accounts.get_account(user.to_string()).clone();
         match account {
-            Some(acct) => match acct.increment_balance(amount) {
+            Some(mut acct) => match acct.increment_balance(amount) {
                 Ok(amt) => {
+                    accounts.update_account(user, acct);
                     return (
                         s,
                         Response {
                             status: Status::Success,
-                            msg: format!("Added {} to your balance\n", amt),
+                            msg: format!(
+                                "Added {} to your balance, now has {}\n",
+                                amt, acct.balance
+                            ),
                             acct: None,
                         },
-                    )
+                    );
                 }
                 Err(e) => {
                     return (
@@ -243,6 +246,7 @@ impl SessionManager {
     pub fn handle_stream(&mut self, mut stream: TcpStream) {
         let mut session = Box::new(Session::default());
         let mut buf = [0; 1024];
+        let addr = stream.peer_addr().unwrap();
 
         let open_msg = "Welcome! Supported methods: create, login, update, quit.\n".to_string();
         stream.write(open_msg.as_bytes()).unwrap();
@@ -270,7 +274,7 @@ impl SessionManager {
                                 stream.write(res.msg.as_bytes()).unwrap();
                             }
                             Command::Update => {
-                                let parsed_amt = data.parse::<f32>();
+                                let parsed_amt = data.trim().parse::<f32>();
                                 let (s, res) = match parsed_amt {
                                     Ok(amt) => self.handle_update(session, amt),
                                     Err(_) => (
@@ -299,7 +303,7 @@ impl SessionManager {
                     None => {
                         session.command = Some(Command::from(data));
                         let msg = get_command_response(session.command.unwrap());
-                        stream.write(msg.as_bytes()).unwrap();
+                        stream.write(msg.as_bytes());
                     }
                 }
                 true

@@ -6,7 +6,7 @@ pub type Result<T> = std::result::Result<T, String>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Account {
-    balance: f32,
+    pub balance: f32,
     password_hash: u64,
 }
 
@@ -36,12 +36,12 @@ impl Account {
         self.balance
     }
 
-    pub fn increment_balance(mut self, amount: f32) -> Result<f32> {
+    pub fn increment_balance(&mut self, amount: f32) -> Result<f32> {
         if (self.balance + amount) < 0.0 {
             return Err("Can't have a negative balance".to_string());
         }
         self.balance += amount;
-        Ok(self.balance)
+        Ok(amount)
     }
 
     pub fn change_password(mut self, new: &str) -> Result<()> {
