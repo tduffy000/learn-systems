@@ -1,6 +1,7 @@
+use core::fmt;
 use std::convert::From;
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, Shutdown};
 use std::str;
 use std::sync::{Arc, Mutex};
 
@@ -33,7 +34,7 @@ fn get_command_response(cmd: Command) -> String {
     let s = match cmd {
         Command::Create => "give me a <user>:<password>\n",
         Command::Login => "give me a <user>:<password>\n",
-        Command::Update => "todo",
+        Command::Update => "give me an amount\n",
         Command::Quit => "terminating...\n",
         Command::Noop => "continuing...\n",
         Command::Unimpl => "unimplemented!\n",
@@ -177,12 +178,47 @@ impl SessionManager {
         }
     }
 
-    fn handle_update(mut self, amount: f32) -> Response {
-        Response {
-            status: Status::Failure,
-            msg: "unimplemented\n".to_string(),
-            acct: None,
+    fn handle_update(&mut self, session: Box<Session>, amount: f32) -> (Box<Session>, Response) {
+        let s = session.clone();
+        if session.user.is_none() {
+            return (s, Response {
+                status: Status::Failure,
+                msg: "Must login first!\n".to_string(),
+                acct: None,
+            })
+        };
+        if !session.authed {
+            return (s, Response {
+                status: Status::Failure,
+                msg: "Unauthorized\n".to_string(),
+                acct: None,
+            })
         }
+        let mut accounts = self.accounts.lock().unwrap();
+        let mut account = accounts.get_account(session.user.unwrap().to_string()).clone();
+        match account {
+            Some(acct) => {
+                match acct.increment_balance(amount) {
+                    Ok(amt) => return (s, Response {
+                        status: Status::Success,
+                        msg: format!("Added {} to your balance\n", amt),
+                        acct: None,
+                    }),
+                    Err(e) => return (s, Response {
+                        status: Status::Failure,
+                        msg: "Cannot complete transaction\n".to_string(),
+                        acct: None,
+                    }),
+                }
+            },
+            None => {
+                return (s, Response {
+                    status: Status::Failure,
+                    msg: "No such account!\n".to_string(),
+                    acct: None,
+                })
+            }
+        }     
     }
 
     pub fn handle_stream(&mut self, mut stream: TcpStream) {
@@ -214,8 +250,18 @@ impl SessionManager {
                                 session = s;
                                 stream.write(res.msg.as_bytes()).unwrap();
                             }
-                            Command::Update => {}
-                            Command::Quit => {}
+                            Command::Update => {
+                                let parsed_amt = data.parse::<f32>();
+                                let (s, res) = match parsed_amt {
+                                    Ok(amt) => self.handle_update(session, amt),
+                                    Err(_) => (session, Response { status: Status::Failure, msg: "Invalid input".to_string(), acct: None }),
+                                };
+                                session = s;
+                                stream.write(res.msg.as_bytes()).unwrap();
+                            }
+                            Command::Quit => {
+                                stream.shutdown(Shutdown::Both);
+                            }
                             Command::Unimpl => {}
                             Command::Noop => {}
                         }
