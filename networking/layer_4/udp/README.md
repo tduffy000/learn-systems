@@ -1,19 +1,5 @@
 # User Datagram Protocol (UDP)
-
-Defined by Internet Engineering Task Force [RFC 768](https://tools.ietf.org/html/rfc768).
-
-
-
-
-[link](https://doc.rust-lang.org/src/std/sys/unix/ext/net.rs.html#817-822)
-```rust
-impl FromRawFd for net::UdpSocket {
-    unsafe fn from_raw_fd(fd: RawFd) -> net::UdpSocket {
-        let socket = sys::net::Socket::from_inner(fd);
-        net::UdpSocket::from_inner(sys_common::net::UdpSocket::from_inner(socket))
-    }
-}
-```
+UDP, defined by the Internet Engineering Task Force [RFC 768](https://tools.ietf.org/html/rfc768), is a connection-less protocol. In Rust, we can listen for UDP-based traffic using a [`UdpSocket`](https://doc.rust-lang.org/std/net/struct.UdpSocket.html) by binding it to a specified socket address. UDP is unordered and unreliable which makes it more useful in cases where latency is preferred over correctness. 
 
 ## Examples
 Below we discuss the two example projects demonstrating the use of the UDP protocol. The first is an [echo](###echo) server and the second is a simple pass-through [DNS](###dns).
@@ -100,7 +86,7 @@ dig @10.0.1.16 -p 9999 google.com
 ```
 Here, note, we're overriding the port via the `-p` flag so as not to use the reserved port 53. This reflects the value used in the Rust code.
 
-# Resources
+## Resources
 * Cloudflare, "What is UDP?". [[source]](https://www.cloudflare.com/learning/ddos/glossary/user-datagram-protocol-udp/)
 * Duke University CPS365, "DNS Primer Notes". [[source]](https://www2.cs.duke.edu/courses/fall16/compsci356/DNS/DNS-primer.pdf)
 * Emil Hernvall, "dnsguide". [[source]](https://github.com/EmilHernvall/dnsguide)
