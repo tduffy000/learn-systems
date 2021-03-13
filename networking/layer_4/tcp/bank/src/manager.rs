@@ -29,18 +29,16 @@ impl From<&str> for Command {
     }
 }
 
-impl Command {
-    fn get_response(self) -> String {
-        let s = match (self) {
-            Create => "give me a <user>:<password>\n",
-            Login => "give me a <user>:<password>\n",
-            Update => "todo",
-            Quit => "terminating...\n",
-            Noop => "continuing...\n",
-            Unimpl => "unimplemented!\n",
-        };
-        s.to_string()
-    }
+fn get_command_response(cmd: Command) -> String {
+    let s = match cmd {
+        Command::Create => "give me a <user>:<password>\n",
+        Command::Login => "give me a <user>:<password>\n",
+        Command::Update => "todo",
+        Command::Quit => "terminating...\n",
+        Command::Noop => "continuing...\n",
+        Command::Unimpl => "unimplemented!\n",
+    };
+    s.to_string()
 }
 
 enum Status {
@@ -96,7 +94,7 @@ impl SessionManager {
                 session,
                 Response {
                     status: Status::Failure,
-                    msg: "already logged in".to_string(),
+                    msg: "already logged in\n".to_string(),
                     acct: None,
                 },
             );
@@ -117,7 +115,7 @@ impl SessionManager {
                         session,
                         Response {
                             status: Status::Success,
-                            msg: "login successful!".to_string(),
+                            msg: "login successful!\n".to_string(),
                             acct: Some(acct),
                         },
                     );
@@ -126,7 +124,7 @@ impl SessionManager {
                         session,
                         Response {
                             status: Status::Success,
-                            msg: "incorrect password".to_string(),
+                            msg: "incorrect password\n".to_string(),
                             acct: None,
                         },
                     );
@@ -136,7 +134,7 @@ impl SessionManager {
                 session,
                 Response {
                     status: Status::Failure,
-                    msg: "no such account".to_string(),
+                    msg: "no such account\n".to_string(),
                     acct: None,
                 },
             ),
@@ -158,7 +156,7 @@ impl SessionManager {
                     session,
                     Response {
                         status: Status::Failure,
-                        msg: "account exists".to_string(),
+                        msg: "account exists\n".to_string(),
                         acct: None,
                     },
                 )
@@ -171,7 +169,7 @@ impl SessionManager {
                     session,
                     Response {
                         status: Status::Success,
-                        msg: "account created".to_string(),
+                        msg: "account created\n".to_string(),
                         acct: Some(acct),
                     },
                 )
@@ -182,7 +180,7 @@ impl SessionManager {
     fn handle_update(mut self, amount: f32) -> Response {
         Response {
             status: Status::Failure,
-            msg: "unimplemented".to_string(),
+            msg: "unimplemented\n".to_string(),
             acct: None,
         }
     }
@@ -190,6 +188,9 @@ impl SessionManager {
     pub fn handle_stream(&mut self, mut stream: TcpStream) {
         let mut session = Box::new(Session::default());
         let mut buf = [0; 1024];
+
+        let open_msg = "Welcome! Supported methods: create, login, update, quit.\n".to_string();
+        stream.write(open_msg.as_bytes()).unwrap();
 
         while match stream.read(&mut buf) {
             Ok(n) => {
@@ -225,7 +226,7 @@ impl SessionManager {
                     }
                     None => {
                         session.command = Some(Command::from(data));
-                        let msg = session.command.unwrap().get_response();
+                        let msg = get_command_response(session.command.unwrap());
                         stream.write(msg.as_bytes()).unwrap();
                     }
                 }
