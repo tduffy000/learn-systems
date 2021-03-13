@@ -1,7 +1,7 @@
 use core::fmt;
 use std::convert::From;
 use std::io::{Read, Write};
-use std::net::{TcpStream, Shutdown};
+use std::net::{Shutdown, TcpStream};
 use std::str;
 use std::sync::{Arc, Mutex};
 
@@ -181,44 +181,63 @@ impl SessionManager {
     fn handle_update(&mut self, session: Box<Session>, amount: f32) -> (Box<Session>, Response) {
         let s = session.clone();
         if session.user.is_none() {
-            return (s, Response {
-                status: Status::Failure,
-                msg: "Must login first!\n".to_string(),
-                acct: None,
-            })
+            return (
+                s,
+                Response {
+                    status: Status::Failure,
+                    msg: "Must login first!\n".to_string(),
+                    acct: None,
+                },
+            );
         };
         if !session.authed {
-            return (s, Response {
-                status: Status::Failure,
-                msg: "Unauthorized\n".to_string(),
-                acct: None,
-            })
+            return (
+                s,
+                Response {
+                    status: Status::Failure,
+                    msg: "Unauthorized\n".to_string(),
+                    acct: None,
+                },
+            );
         }
         let mut accounts = self.accounts.lock().unwrap();
-        let mut account = accounts.get_account(session.user.unwrap().to_string()).clone();
+        let mut account = accounts
+            .get_account(session.user.unwrap().to_string())
+            .clone();
         match account {
-            Some(acct) => {
-                match acct.increment_balance(amount) {
-                    Ok(amt) => return (s, Response {
-                        status: Status::Success,
-                        msg: format!("Added {} to your balance\n", amt),
-                        acct: None,
-                    }),
-                    Err(e) => return (s, Response {
-                        status: Status::Failure,
-                        msg: "Cannot complete transaction\n".to_string(),
-                        acct: None,
-                    }),
+            Some(acct) => match acct.increment_balance(amount) {
+                Ok(amt) => {
+                    return (
+                        s,
+                        Response {
+                            status: Status::Success,
+                            msg: format!("Added {} to your balance\n", amt),
+                            acct: None,
+                        },
+                    )
+                }
+                Err(e) => {
+                    return (
+                        s,
+                        Response {
+                            status: Status::Failure,
+                            msg: "Cannot complete transaction\n".to_string(),
+                            acct: None,
+                        },
+                    )
                 }
             },
             None => {
-                return (s, Response {
-                    status: Status::Failure,
-                    msg: "No such account!\n".to_string(),
-                    acct: None,
-                })
+                return (
+                    s,
+                    Response {
+                        status: Status::Failure,
+                        msg: "No such account!\n".to_string(),
+                        acct: None,
+                    },
+                )
             }
-        }     
+        }
     }
 
     pub fn handle_stream(&mut self, mut stream: TcpStream) {
@@ -234,7 +253,7 @@ impl SessionManager {
                     Ok(s) => s,
                     Err(_) => "nope",
                 };
-                
+
                 match session.command {
                     Some(cmd) => {
                         match cmd {
@@ -254,7 +273,14 @@ impl SessionManager {
                                 let parsed_amt = data.parse::<f32>();
                                 let (s, res) = match parsed_amt {
                                     Ok(amt) => self.handle_update(session, amt),
-                                    Err(_) => (session, Response { status: Status::Failure, msg: "Invalid input".to_string(), acct: None }),
+                                    Err(_) => (
+                                        session,
+                                        Response {
+                                            status: Status::Failure,
+                                            msg: "Invalid input".to_string(),
+                                            acct: None,
+                                        },
+                                    ),
                                 };
                                 session = s;
                                 stream.write(res.msg.as_bytes()).unwrap();
