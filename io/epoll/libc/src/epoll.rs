@@ -77,11 +77,11 @@ impl EpollInstance {
 
     pub fn wait(
         &self,
-        mut event: libc::epoll_event,
+        events: *mut libc::epoll_event,
         max_events: i32,
         timeout: i32,
     ) -> io::Result<i32> {
-        syscall!(epoll_wait(self.fd, &mut event, max_events, timeout))
+        syscall!(epoll_wait(self.fd, events, max_events, timeout))
     }
 }
 
