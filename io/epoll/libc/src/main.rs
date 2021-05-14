@@ -1,7 +1,7 @@
 use std::{collections::HashMap, os::unix::io::AsRawFd};
 use std::{
     io,
-    net::{TcpListener, TcpStream, Shutdown},
+    net::{Shutdown, TcpListener, TcpStream},
 };
 
 mod epoll;
@@ -23,14 +23,10 @@ impl TcpConnection {
         TcpConnection { stream }
     }
 
-    fn read() {}
+    fn read(&self) {}
 
-    fn write() {}
-
+    fn write(&self) {}
 }
-
-
-
 
 fn main() -> io::Result<()> {
     let ep = EpollInstance::create1(0).expect("Error creating EpollInstance");
@@ -68,13 +64,17 @@ fn main() -> io::Result<()> {
 
                         let conn = TcpConnection::new(stream);
                         connections.insert(id, conn);
-                    },
+                    }
                     Err(e) => eprintln!("Listener failed: {}", e),
                 }
             } else {
-                // handle IO on connection 
-
-                // either writing back or reading (handle killing signal)
+                if let Some(conn) = connections.get(&event.u64) {
+                    match event.events as libc::c_int {
+                        libc::EPOLLIN => conn.read(),
+                        libc::EPOLLOUT => conn.write(),
+                        e => println!("Got unknown event: {}", e),
+                    }
+                }
             }
         }
     }
