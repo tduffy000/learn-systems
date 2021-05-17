@@ -22,9 +22,9 @@ enum EpollOp {
 impl Into<i32> for EpollOp {
     fn into(self) -> i32 {
         match self {
-            AddInterest => libc::EPOLL_CTL_ADD,
-            ChangeEvent => libc::EPOLL_CTL_MOD,
-            Deregister => libc::EPOLL_CTL_DEL,
+            EpollOp::AddInterest => libc::EPOLL_CTL_ADD,
+            EpollOp::ChangeEvent => libc::EPOLL_CTL_MOD,
+            EpollOp::Deregister => libc::EPOLL_CTL_DEL,
         }
     }
 }
