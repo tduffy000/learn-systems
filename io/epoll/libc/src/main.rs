@@ -1,4 +1,9 @@
-use std::{collections::HashMap, io::{Read, Write}, os::unix::io::AsRawFd};
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    net::SocketAddr,
+    os::unix::io::AsRawFd,
+};
 use std::{
     io,
     net::{Shutdown, TcpListener, TcpStream},
@@ -13,12 +18,13 @@ const RES: &[u8] = b"Hi!";
 #[derive(Debug)]
 struct TcpConnection {
     id: u64,
+    addr: SocketAddr,
     stream: TcpStream,
 }
 
 impl TcpConnection {
-    fn new(id: u64, stream: TcpStream) -> Self {
-        TcpConnection { id, stream }
+    fn new(id: u64, addr: SocketAddr, stream: TcpStream) -> Self {
+        TcpConnection { id, addr, stream }
     }
 
     fn read(&mut self) {
@@ -28,20 +34,21 @@ impl TcpConnection {
                 if let Ok(data) = std::str::from_utf8(&buf) {
                     println!("Received data: {}", data);
                 }
-            },
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {},
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => println!("Got error reading: {}", e),
         }
     }
 
     fn write(&mut self) {
         match self.stream.write(&RES) {
-            Ok(_) => println!("responded on {}", self.id),
+            Ok(_) => println!("responded on {}", self.addr),
             Err(e) => eprintln!("Got error: {}", e),
         }
     }
 }
 
+// Disconnected client not handled
 fn main() -> io::Result<()> {
     let ep = EpollInstance::create1(0).expect("Error creating EpollInstance");
 
@@ -51,7 +58,7 @@ fn main() -> io::Result<()> {
         .expect("Cannot set non-blocking");
 
     let tcp_read_event = libc::epoll_event {
-        events: (libc::EPOLLONESHOT | libc::EPOLLIN) as u32,
+        events: libc::EPOLLIN as u32,
         u64: CONNECTION_HANDLER_KEY,
     };
     let _ = ep.add_interest(tcp_listener.as_raw_fd(), tcp_read_event)?;
@@ -67,10 +74,12 @@ fn main() -> io::Result<()> {
         unsafe { events.set_len(n as usize) }
 
         for event in &events {
+            println!("handling event.u64: {}", &event.u64);
             if event.u64 == CONNECTION_HANDLER_KEY {
                 match tcp_listener.accept() {
                     Ok((stream, _)) => {
-                        println!("Another client from : {:?}", stream.peer_addr().unwrap());
+                        let addr = stream.peer_addr().unwrap();
+                        println!("Another client from : {:?}", addr);
                         id += 1;
                         let read_event = libc::epoll_event {
                             events: libc::EPOLLIN as u32,
@@ -78,7 +87,7 @@ fn main() -> io::Result<()> {
                         };
                         let _ = ep.add_interest(stream.as_raw_fd(), read_event)?;
 
-                        let conn = TcpConnection::new(id, stream);
+                        let conn = TcpConnection::new(id, addr, stream);
                         connections.insert(id, conn);
                     }
                     Err(e) => eprintln!("Listener failed: {}", e),
@@ -88,25 +97,29 @@ fn main() -> io::Result<()> {
                     match event.events as libc::c_int {
                         libc::EPOLLIN => {
                             conn.read();
-                            ep.change_event(conn.stream.as_raw_fd(), libc::epoll_event{
-                                events: libc::EPOLLOUT as u32,
-                                u64: conn.id,
-                            })?;
-                        },
+                            ep.change_event(
+                                conn.stream.as_raw_fd(),
+                                libc::epoll_event {
+                                    events: libc::EPOLLOUT as u32,
+                                    u64: conn.id,
+                                },
+                            )?;
+                        }
                         libc::EPOLLOUT => {
                             conn.write();
-                            ep.change_event(conn.stream.as_raw_fd(), libc::epoll_event{
-                                events: libc::EPOLLIN as u32,
-                                u64: conn.id,
-                            })?;
-                        },
+                            ep.change_event(
+                                conn.stream.as_raw_fd(),
+                                libc::epoll_event {
+                                    events: libc::EPOLLIN as u32,
+                                    u64: conn.id,
+                                },
+                            )?;
+                        }
                         e => println!("Got unknown event: {}", e),
                     }
                 }
             }
-
         }
-
     }
 
     drop(ep);
