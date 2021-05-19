@@ -46,7 +46,13 @@ impl TcpConnection {
             Err(e) => eprintln!("Got error: {}", e),
         }
     }
+
+    fn close(&mut self) -> io::Result<()> {
+        self.stream.shutdown(Shutdown::Both)?;
+        Ok(())
+    }
 }
+
 
 // Disconnected client not handled
 fn main() -> io::Result<()> {
@@ -93,6 +99,7 @@ fn main() -> io::Result<()> {
                     Err(e) => eprintln!("Listener failed: {}", e),
                 }
             } else {
+                let mut conn_to_remove: Option<&u64> = None;
                 if let Some(conn) = connections.get_mut(&event.u64) {
                     match event.events as libc::c_int {
                         libc::EPOLLIN => {
@@ -112,14 +119,26 @@ fn main() -> io::Result<()> {
                                 libc::epoll_event {
                                     events: libc::EPOLLIN as u32,
                                     u64: conn.id,
-                                },
+                                }
                             )?;
+                        }
+                        25 => {
+                            // Write end of TcpStream hung up
+                            // Epoll removes a closed FD so we don't have to deregister it
+                            // (See Q6 --> https://man7.org/linux/man-pages/man7/epoll.7.html)
+                            conn.close()?;
+                            println!("Client at addr: {} hung up", conn.addr);
+                            conn_to_remove = Some(&conn.id);
                         }
                         e => println!("Got unknown event: {}", e),
                     }
                 }
+                if let Some(id) = conn_to_remove {
+                    connections.remove(id);
+                }
             }
         }
+
     }
 
     drop(ep);
