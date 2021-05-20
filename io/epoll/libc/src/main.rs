@@ -1,60 +1,14 @@
-use std::{
-    collections::HashMap,
-    io::{Read, Write},
-    net::SocketAddr,
-    os::unix::io::AsRawFd,
-};
-use std::{
-    io,
-    net::{Shutdown, TcpListener, TcpStream},
-};
+use std::{collections::HashMap, os::unix::io::AsRawFd};
+use std::{io, net::TcpListener};
 
 mod epoll;
 use epoll::EpollInstance;
 
+mod conn;
+use conn::{TcpConnection, TCP_HUP};
+
 const CONNECTION_HANDLER_KEY: u64 = 42;
-const RES: &[u8] = b"Hi!";
 
-#[derive(Debug)]
-struct TcpConnection {
-    id: u64,
-    addr: SocketAddr,
-    stream: TcpStream,
-}
-
-impl TcpConnection {
-    fn new(id: u64, addr: SocketAddr, stream: TcpStream) -> Self {
-        TcpConnection { id, addr, stream }
-    }
-
-    fn read(&mut self) {
-        let mut buf = [0u8; 4096];
-        match self.stream.read(&mut buf) {
-            Ok(_) => {
-                if let Ok(data) = std::str::from_utf8(&buf) {
-                    println!("Received data: {}", data);
-                }
-            }
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(e) => println!("Got error reading: {}", e),
-        }
-    }
-
-    fn write(&mut self) {
-        match self.stream.write(&RES) {
-            Ok(_) => println!("responded on {}", self.addr),
-            Err(e) => eprintln!("Got error: {}", e),
-        }
-    }
-
-    fn close(&mut self) -> io::Result<()> {
-        self.stream.shutdown(Shutdown::Both)?;
-        Ok(())
-    }
-}
-
-
-// Disconnected client not handled
 fn main() -> io::Result<()> {
     let ep = EpollInstance::create1(0).expect("Error creating EpollInstance");
 
@@ -99,46 +53,25 @@ fn main() -> io::Result<()> {
                     Err(e) => eprintln!("Listener failed: {}", e),
                 }
             } else {
-                let mut conn_to_remove: Option<&u64> = None;
                 if let Some(conn) = connections.get_mut(&event.u64) {
                     match event.events as libc::c_int {
                         libc::EPOLLIN => {
                             conn.read();
-                            ep.change_event(
-                                conn.stream.as_raw_fd(),
-                                libc::epoll_event {
-                                    events: libc::EPOLLOUT as u32,
-                                    u64: conn.id,
-                                },
-                            )?;
+                            ep.change_event(conn.fd, conn.write_event)?;
                         }
                         libc::EPOLLOUT => {
                             conn.write();
-                            ep.change_event(
-                                conn.stream.as_raw_fd(),
-                                libc::epoll_event {
-                                    events: libc::EPOLLIN as u32,
-                                    u64: conn.id,
-                                }
-                            )?;
+                            ep.change_event(conn.fd, conn.read_event)?;
                         }
-                        25 => {
-                            // Write end of TcpStream hung up
-                            // Epoll removes a closed FD so we don't have to deregister it
-                            // (See Q6 --> https://man7.org/linux/man-pages/man7/epoll.7.html)
-                            conn.close()?;
+                        TCP_HUP => {
                             println!("Client at addr: {} hung up", conn.addr);
-                            conn_to_remove = Some(&conn.id);
+                            ep.deregister(conn.fd)?;
                         }
                         e => println!("Got unknown event: {}", e),
                     }
                 }
-                if let Some(id) = conn_to_remove {
-                    connections.remove(id);
-                }
             }
         }
-
     }
 
     drop(ep);
