@@ -1,15 +1,13 @@
 # `epoll`
-The `epoll` interface is a Linux-only successor to the `poll` interface, which are event-handling loops responsible for watching a set of registered file descriptors to determine if they are ready for I/O operations. 
+The `epoll` interface is a Linux-only successor to the `poll` interface, which is a responsible for watching a set of registered file descriptors to determine if they are ready for I/O operations. This allows for async I/O.  
 
-`epoll` creates an instance (a file descriptor) that is responsible for watching a set of file descriptors that have been registered with it to see if they are ready for IO. This event based strategy << >>.
-
-This interface became useful with the advent of modern servers which are responsible for monitoring many file descriptors (representing active TCP connections) and only doing work when one of them has written data to the listener (which is a semi-frequent occurrence). Recall, the work we did in [the TCP networking module](../../../networking/layer_4/tcp/). Then, we recieve _n_ events when asking what work should be done, but modifying the watched file descriptors is an _O(1)_ operation. A great discussion of this problem can be found on the [C10K problem page](http://www.kegel.com/c10k.html).
+This interface became useful with the advent of modern servers which are responsible for monitoring many file descriptors (representing active TCP connections) and only doing work when one of them has written data to the listener (which is a semi-frequent occurrence). Recall, the work we did in [the TCP networking module](../../../networking/layer_4/tcp/). Then, we receive _n_ events when asking what work should be done, but modifying the watched file descriptors is an _O(1)_ operation. A great discussion of this problem can be found on the [C10K problem page](http://www.kegel.com/c10k.html).
 
 The `epoll` instance is creating using, either `epoll_create` or `epoll_create1` which both make use of [`do_epoll_create`](https://github.com/torvalds/linux/blob/9f4ad9e425a1d3b6a34617b8ea226d56a119a717/fs/eventpoll.c#L1951). This `epoll` instance contains an internal Red-Black tree containing [`epitem`](https://github.com/torvalds/linux/blob/9f4ad9e425a1d3b6a34617b8ea226d56a119a717/fs/eventpoll.c#L136) nodes for the watched file descriptors.
 
 # `libc` Wrapper
 
-In Rust, first we steal a macro from [`mio`]() which makes wrapping `libc` system calls easier and safer by wrapping them in `std::io::Result` objects. 
+In Rust, first we steal a macro from [`mio`](https://github.com/tokio-rs/mio/blob/1667a7027382bd43470bc43e5982531a2e14b7ba/src/sys/unix/mod.rs#L5) which makes wrapping `libc` system calls easier and safer by wrapping them in `std::io::Result` objects. 
 
 ```rust
 macro_rules! syscall {
@@ -122,7 +120,7 @@ Now, we're ready to use this as a simplified wrapper of the `libc` interface of 
 ## Usage
 Given, as mentioned previously, that this work was motivated by the profileration of servers and other systems responsible for handling hundreds of thousands of concurrent connections (read: file descriptors), our example is a simple TCP handler. 
 
-Our setup requires us to create an instance of `EpollInstance` which will allocate via `create1` and then we'll provision a TCP listener socket (which is also just a file descriptor) and tell `epoll` we'd like to listen to `poll` events for that (the listener's) fd.
+Our setup requires us to create an instance of `EpollInstance` which gets allocated via `create1` and then we'll provision a TCP listener socket (which is also just a file descriptor) and tell `epoll` we'd like to listen to `epoll` events for that (the listener's) fd.
 
 ```rust
 let ep = EpollInstance::create1(0).expect("Error creating EpollInstance");
@@ -139,7 +137,7 @@ let tcp_read_event = libc::epoll_event {
 let _ = ep.add_interest(tcp_listener.as_raw_fd(), tcp_read_event)?;
 ```
 
-So, now, when we receive a new connection to our `TcpListener` we'll get an event for it, and then we can register the resultant `TcpStream` (which as a living connection has its own fd) with our `epoll` instance. This way, we don't need a thread to watch the stream. 
+So, now, when we receive a new connection to our `TcpListener` we'll get an event for it, and then we can register the resultant `TcpStream` (which as a living connection has its own fd) with our `epoll` instance. This way, we don't need a standalone thread to watch the stream. 
 
 ```rust
 match tcp_listener.accept() {
@@ -162,12 +160,18 @@ match tcp_listener.accept() {
 
 When the remote client writes some data to it, we'll know via `wait` and then we can handle it. What a save on concurrency!
 
+## Testing
+You can see it working by going into the [`libc`](./libc) directory and starting via `cargo run`. Then, open a few extra terminal sessions and use `netcat` to start a TCP connection with the "server"
+```bash
+nc localhost 8001
+```
+write any data to the socket and it'll respond with `Hi!`. The events will get logged back in the main loop running via `cargo run`. 
 
 # Resources
-https://www.zupzup.org/epoll-with-rust/index.html
-https://unixism.net/2019/04/linux-applications-performance-part-vi-polling-servers/
-https://unixism.net/2019/04/linux-applications-performance-part-vii-epoll-servers/
-https://jvns.ca/blog/2017/06/03/async-io-on-linux--select--poll--and-epoll/
-https://kovyrin.net/2006/04/13/epoll-asynchronous-network-programming/
-http://www.kegel.com/c10k.html
-https://copyconstruct.medium.com/the-method-to-epolls-madness-d9d2d6378642
+* https://www.zupzup.org/epoll-with-rust/index.html
+* https://unixism.net/2019/04/linux-applications-performance-part-vi-polling-servers/
+* https://unixism.net/2019/04/linux-applications-performance-part-vii-epoll-servers/
+* https://jvns.ca/blog/2017/06/03/async-io-on-linux--select--poll--and-epoll/
+* https://kovyrin.net/2006/04/13/epoll-asynchronous-network-programming/
+* http://www.kegel.com/c10k.html
+* https://copyconstruct.medium.com/the-method-to-epolls-madness-d9d2d6378642
