@@ -6,3 +6,4 @@ A collection of my learnings on (distributed) systems fundamentals. And an excus
 | :---: | :--------: | :----------- |
 | Consistent Hashing | [consistent-hashing](./consistent-hashing) | Unit-circle based consistent hashing for data partitioning. |
 | Networking | [networking](./networking) | Networking principles such as the OSI Model. |
+| I/O | [io](./io) | Input / Output patterns and protocols.
