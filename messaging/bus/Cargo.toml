@@ -1,0 +1,12 @@
+[package]
+name = "bus"
+version = "0.1.0"
+authors = ["thomas <tduffy000@citymail.cuny.edu>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+uuid = { version = "0.8", features = ["serde", "v4"] }
+chrono = "0.4"
+tokio = { version = "1.12.0", features = ["full"] }
