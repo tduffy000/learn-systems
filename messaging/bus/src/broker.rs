@@ -1,10 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use tokio::net::UdpSocket;
+
 use crate::client::{Publisher, Subscriber};
 use crate::topic::Topic;
 
 pub struct MessageBroker<'a> {
+    sock: UdpSocket,
     taken_names: HashSet<String>,
     topics: Vec<Topic<'a>>,
     publisher_map: HashMap<String, Arc<Mutex<Vec<Publisher>>>>,
@@ -20,8 +23,9 @@ pub struct MessageBroker<'a> {
 // /push message
 // /pull message
 impl<'a> MessageBroker<'static> {
-    pub fn new() -> Self {
+    pub fn new(sock: UdpSocket) -> Self {
         MessageBroker {
+            sock,
             taken_names: HashSet::default(),
             topics: Vec::default(),
             publisher_map: HashMap::default(),
@@ -72,7 +76,6 @@ impl<'a> MessageBroker<'static> {
         if self.topic_exists(&topic_name) {
             match self.publisher_map.get(&topic_name) {
                 Some(publishers) => {
-                    println!("pulled publisher");
                     let pubs = publishers.clone();
                     let mut v = pubs.lock().unwrap();
                     v.push(publisher);
@@ -82,6 +85,17 @@ impl<'a> MessageBroker<'static> {
             }
         } else {
             Err(())
+        }
+    }
+
+    pub fn get_publishers(&self, topic_name: impl ToString) -> Result<Vec<Publisher>, ()> {
+        match self.publisher_map.get(&topic_name.to_string()) {
+            Some(publishers) => {
+                let pubs = publishers.clone();
+                let v = pubs.lock().unwrap();
+                Ok(v.clone())
+            }
+            None => Err(()),
         }
     }
 
@@ -105,6 +119,16 @@ impl<'a> MessageBroker<'static> {
         }
     }
 
+    pub fn get_subscribers(&self, topic_name: impl ToString) -> Result<Vec<Subscriber>, ()> {
+        match self.subscriber_map.get(&topic_name.to_string()) {
+            Some(subscribers) => {
+                let subs = subscribers.clone();
+                let v = subs.lock().unwrap();
+                Ok(v.clone())
+            }
+            None => Err(()),
+        }
+    }
     pub fn serve(self) {
         // tokio loop
         loop {}
@@ -127,34 +151,38 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_topic_exists() {
-        let mut broker = MessageBroker::new();
+    #[tokio::test]
+    async fn test_topic_exists() {
+        let socket = UdpSocket::bind("0.0.0.0:8080").await.unwrap();
+        let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         assert!(broker.topic_exists(&"test_topic_1"));
         assert!(!broker.topic_exists(&"no_such_topic"))
     }
 
-    #[test]
-    fn test_add_topic() {
-        let mut broker = MessageBroker::new();
+    #[tokio::test]
+    async fn test_add_topic() {
+        let socket = UdpSocket::bind("0.0.0.0:8081").await.unwrap();
+        let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         assert!(broker.add_topic("test_topic_4").is_ok());
         assert!(broker.topic_exists(&"test_topic_4"))
     }
 
-    #[test]
-    fn test_remove_topic() {
-        let mut broker = MessageBroker::new();
+    #[tokio::test]
+    async fn test_remove_topic() {
+        let socket = UdpSocket::bind("0.0.0.0:8082").await.unwrap();
+        let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         assert!(broker.remove_topic("test_topic_3").is_ok());
         assert!(broker.remove_topic("no_such_topic").is_err());
         assert!(!broker.topic_exists(&"test_topic_3"));
     }
 
-    #[test]
-    fn test_register_publisher() {
-        let mut broker = MessageBroker::new();
+    #[tokio::test]
+    async fn test_register_publisher() {
+        let socket = UdpSocket::bind("0.0.0.0:8083").await.unwrap();
+        let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         let publisher = Publisher::new();
         assert!(broker
@@ -173,9 +201,23 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_register_subscriber() {
-        let mut broker = MessageBroker::new();
+    #[tokio::test]
+    async fn test_get_publishers() {
+        let socket = UdpSocket::bind("0.0.0.0:8084").await.unwrap();
+        let mut broker = MessageBroker::new(socket);
+        seed_broker(&mut broker);
+        let publisher = Publisher::new();
+        assert!(broker
+            .register_publisher("test_topic_1".to_string(), publisher)
+            .is_ok());
+        let pubs = broker.get_publishers("test_topic_1").unwrap();
+        assert_eq!(pubs, vec![publisher]);
+    }
+
+    #[tokio::test]
+    async fn test_register_subscriber() {
+        let socket = UdpSocket::bind("0.0.0.0:8085").await.unwrap();
+        let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         let subscriber = Subscriber::new();
         assert!(broker
@@ -192,5 +234,18 @@ mod tests {
             }
             None => assert!(1 == 0),
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_subscribers() {
+        let socket = UdpSocket::bind("0.0.0.0:8086").await.unwrap();
+        let mut broker = MessageBroker::new(socket);
+        seed_broker(&mut broker);
+        let subscriber = Subscriber::new();
+        assert!(broker
+            .register_subscriber("test_topic_1".to_string(), subscriber)
+            .is_ok());
+        let subs = broker.get_subscribers("test_topic_1").unwrap();
+        assert_eq!(subs, vec![subscriber]);
     }
 }
