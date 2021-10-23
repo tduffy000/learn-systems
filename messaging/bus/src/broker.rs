@@ -1,15 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use tokio::net::UdpSocket;
+use tokio::net::TcpListener;
 
 use crate::client::{Publisher, Subscriber};
 use crate::topic::Topic;
 
-pub struct MessageBroker<'a> {
-    sock: UdpSocket,
+pub struct MessageBroker {
+    sock: TcpListener,
     taken_names: HashSet<String>,
-    topics: Vec<Topic<'a>>,
+    topics: Vec<Topic>,
     publisher_map: HashMap<String, Arc<Mutex<Vec<Publisher>>>>,
     subscriber_map: HashMap<String, Arc<Mutex<Vec<Subscriber>>>>,
 }
@@ -22,8 +22,8 @@ pub struct MessageBroker<'a> {
 // /get subscribers
 // /push message
 // /pull message
-impl<'a> MessageBroker<'static> {
-    pub fn new(sock: UdpSocket) -> Self {
+impl MessageBroker {
+    pub fn new(sock: TcpListener) -> Self {
         MessageBroker {
             sock,
             taken_names: HashSet::default(),
@@ -56,7 +56,7 @@ impl<'a> MessageBroker<'static> {
             self.taken_names.remove(&name.to_string());
             let mut i = 0;
             for (idx, topic) in self.topics.iter().enumerate() {
-                if name.to_string() == topic.name {
+                if name.to_string() == topic.0 {
                     i = idx;
                     break;
                 }
@@ -140,7 +140,7 @@ mod tests {
 
     use super::*;
 
-    fn seed_broker(broker: &mut MessageBroker<'static>) {
+    fn seed_broker(broker: &mut MessageBroker) {
         let mut names = vec![
             "test_topic_1".to_string(),
             "test_topic_2".to_string(),
@@ -153,7 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_topic_exists() {
-        let socket = UdpSocket::bind("0.0.0.0:8080").await.unwrap();
+        let socket = TcpListener::bind("0.0.0.0:8080").await.unwrap();
         let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         assert!(broker.topic_exists(&"test_topic_1"));
@@ -162,7 +162,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_topic() {
-        let socket = UdpSocket::bind("0.0.0.0:8081").await.unwrap();
+        let socket = TcpListener::bind("0.0.0.0:8081").await.unwrap();
         let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         assert!(broker.add_topic("test_topic_4").is_ok());
@@ -171,7 +171,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_remove_topic() {
-        let socket = UdpSocket::bind("0.0.0.0:8082").await.unwrap();
+        let socket = TcpListener::bind("0.0.0.0:8082").await.unwrap();
         let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         assert!(broker.remove_topic("test_topic_3").is_ok());
@@ -181,7 +181,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_publisher() {
-        let socket = UdpSocket::bind("0.0.0.0:8083").await.unwrap();
+        let socket = TcpListener::bind("0.0.0.0:8083").await.unwrap();
         let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         let publisher = Publisher::new();
@@ -203,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_publishers() {
-        let socket = UdpSocket::bind("0.0.0.0:8084").await.unwrap();
+        let socket = TcpListener::bind("0.0.0.0:8084").await.unwrap();
         let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         let publisher = Publisher::new();
@@ -216,7 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_subscriber() {
-        let socket = UdpSocket::bind("0.0.0.0:8085").await.unwrap();
+        let socket = TcpListener::bind("0.0.0.0:8085").await.unwrap();
         let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         let subscriber = Subscriber::new();
@@ -238,7 +238,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_subscribers() {
-        let socket = UdpSocket::bind("0.0.0.0:8086").await.unwrap();
+        let socket = TcpListener::bind("0.0.0.0:8086").await.unwrap();
         let mut broker = MessageBroker::new(socket);
         seed_broker(&mut broker);
         let subscriber = Subscriber::new();

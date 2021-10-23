@@ -1,12 +1,4 @@
-use chrono::prelude::*;
 use uuid::Uuid;
-
-pub struct Message<'a> {
-    topic: String,
-    body: &'a [u8],
-    offset: u64, // injected by the broker
-    timestamp: DateTime<Utc>,
-}
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct Publisher {
