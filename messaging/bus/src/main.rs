@@ -10,6 +10,6 @@ use tokio::net::TcpListener;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sock = TcpListener::bind("0.0.0.0:8080").await?;
     let broker = MessageBroker::new(sock);
-    broker.serve();
+    broker.serve().await;
     Ok(())
 }

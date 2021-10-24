@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 use crate::client::{Publisher, Subscriber};
@@ -16,8 +17,6 @@ pub struct MessageBroker {
 
 // /add topic
 // /remove topic
-// /register as publisher
-// /get publishers
 // /register as subscriber
 // /get subscribers
 // /push message
@@ -45,8 +44,6 @@ impl MessageBroker {
             self.topics.push(Topic::new(name.to_string()));
             self.subscriber_map
                 .insert(name.to_string(), Arc::new(Mutex::new(Vec::default())));
-            self.publisher_map
-                .insert(name.to_string(), Arc::new(Mutex::new(Vec::default())));
             Ok(())
         }
     }
@@ -65,37 +62,6 @@ impl MessageBroker {
             Ok(())
         } else {
             Err(())
-        }
-    }
-
-    pub fn register_publisher(
-        &mut self,
-        topic_name: String,
-        publisher: Publisher,
-    ) -> Result<(), ()> {
-        if self.topic_exists(&topic_name) {
-            match self.publisher_map.get(&topic_name) {
-                Some(publishers) => {
-                    let pubs = publishers.clone();
-                    let mut v = pubs.lock().unwrap();
-                    v.push(publisher);
-                    Ok(())
-                }
-                None => Err(()),
-            }
-        } else {
-            Err(())
-        }
-    }
-
-    pub fn get_publishers(&self, topic_name: impl ToString) -> Result<Vec<Publisher>, ()> {
-        match self.publisher_map.get(&topic_name.to_string()) {
-            Some(publishers) => {
-                let pubs = publishers.clone();
-                let v = pubs.lock().unwrap();
-                Ok(v.clone())
-            }
-            None => Err(()),
         }
     }
 
@@ -129,9 +95,39 @@ impl MessageBroker {
             None => Err(()),
         }
     }
-    pub fn serve(self) {
-        // tokio loop
-        loop {}
+
+    pub fn handle_unsubscribe() {}
+
+    pub fn handle_subscribe() {}
+
+    pub fn handle_publish() {}
+
+    pub fn handle_topic_create() {}
+
+    pub fn handle_topic_destroy() {}
+
+    pub async fn serve(self) {
+
+        loop {
+            match self.sock.accept().await {
+                Ok((mut socket, addr)) => {
+                    println!("new client: {:?}", addr);
+                    tokio::spawn(async move {
+                        let mut buf = vec![0; 1024];
+                        loop {
+                            let n = socket.read(&mut buf).await.expect("read error");
+
+                            if n == 0 {
+                                return;
+                            }
+
+                            socket.write_all(&buf[0..n]).await.expect("write error");
+                        }
+                    });
+                },
+                Err(e) => println!("couldn't get client: {:?}", e),
+            }
+        }
     }
 }
 
@@ -141,7 +137,7 @@ mod tests {
     use super::*;
 
     fn seed_broker(broker: &mut MessageBroker) {
-        let mut names = vec![
+        let names = vec![
             "test_topic_1".to_string(),
             "test_topic_2".to_string(),
             "test_topic_3".to_string(),
@@ -177,41 +173,6 @@ mod tests {
         assert!(broker.remove_topic("test_topic_3").is_ok());
         assert!(broker.remove_topic("no_such_topic").is_err());
         assert!(!broker.topic_exists(&"test_topic_3"));
-    }
-
-    #[tokio::test]
-    async fn test_register_publisher() {
-        let socket = TcpListener::bind("0.0.0.0:8083").await.unwrap();
-        let mut broker = MessageBroker::new(socket);
-        seed_broker(&mut broker);
-        let publisher = Publisher::new();
-        assert!(broker
-            .register_publisher("test_topic_1".to_string(), publisher)
-            .is_ok());
-        assert!(broker
-            .register_publisher("no_such_topic".to_string(), publisher.clone())
-            .is_err());
-
-        match broker.publisher_map.get("test_topic_1") {
-            Some(pubs) => {
-                let data = pubs.lock().unwrap();
-                assert_eq!(data.to_vec(), vec![publisher]);
-            }
-            None => assert!(1 == 0),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_publishers() {
-        let socket = TcpListener::bind("0.0.0.0:8084").await.unwrap();
-        let mut broker = MessageBroker::new(socket);
-        seed_broker(&mut broker);
-        let publisher = Publisher::new();
-        assert!(broker
-            .register_publisher("test_topic_1".to_string(), publisher)
-            .is_ok());
-        let pubs = broker.get_publishers("test_topic_1").unwrap();
-        assert_eq!(pubs, vec![publisher]);
     }
 
     #[tokio::test]
