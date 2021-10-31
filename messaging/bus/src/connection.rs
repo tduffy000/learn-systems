@@ -1,6 +1,6 @@
 use bytes::{Buf, BytesMut};
 use std::io::Cursor;
-use tokio::io::{BufWriter, AsyncReadExt};
+use tokio::io::{AsyncReadExt, BufWriter};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
@@ -21,7 +21,6 @@ pub struct Shutdown {
     notify: broadcast::Receiver<()>,
 }
 
-
 impl Connection {
     pub fn new(socket: TcpStream) -> Self {
         Connection {
@@ -33,7 +32,7 @@ impl Connection {
     pub async fn read(&mut self) -> crate::Result<Option<MethodFrames>> {
         loop {
             if let Some(method) = self.parse()? {
-                return Ok(Some(method))
+                return Ok(Some(method));
             }
             if 0 == self.stream.read_buf(&mut self.buffer).await? {
                 if self.buffer.is_empty() {
@@ -57,15 +56,18 @@ impl Connection {
                 buf.advance(len);
 
                 Ok(Some(method))
-            }, 
-            Err(e) => Err("parsing error!".into())
+            }
+            Err(e) => Err("parsing error!".into()),
         }
     }
 }
 
 impl Shutdown {
     pub fn new(notify: broadcast::Receiver<()>) -> Shutdown {
-        Shutdown { shutdown: false, notify }
+        Shutdown {
+            shutdown: false,
+            notify,
+        }
     }
 
     pub fn is_shutdown(&self) -> bool {
@@ -79,7 +81,7 @@ impl Shutdown {
 
         let _ = self.notify.recv().await;
 
-        // only reach this once we receive the shutdown 
+        // only reach this once we receive the shutdown
         // signal on the notify channel
         self.shutdown = true;
     }

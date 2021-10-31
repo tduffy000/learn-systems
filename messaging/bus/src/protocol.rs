@@ -1,26 +1,19 @@
+use std::fmt;
 use std::io::Cursor;
 use std::{char, str};
-use std::fmt;
 
 use bytes::BytesMut;
 use bytes::{Buf, Bytes};
-
-use crate::broker::MessageStore;
-use crate::connection::Connection;
-
-// https://docs.nats.io/nats-protocol/nats-protocol
-// https://www.youtube.com/watch?v=ylRKac5kSOk&t=646s
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message(usize, pub Bytes);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MethodFrames {
-    Make(String),                  // MAKE subject\r\n
-    Delete(String),                // DEL subject\r\n
-    Publish(String, u32, Bytes),   // PUB subject n_bytes\r\n<payload>\r\n
-    Subscribe(String),             // SUB subject\r\n
+    Make(String),                // MAKE subject\r\n
+    Delete(String),              // DEL subject\r\n
+    Publish(String, u32, Bytes), // PUB subject n_bytes\r\n<payload>\r\n
+    Subscribe(String),           // SUB subject\r\n
 }
 
 impl Message {
@@ -39,7 +32,7 @@ impl std::error::Error for ParsingError {}
 impl fmt::Display for ParsingError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         "parsing error".fmt(fmt)
-    }  
+    }
 }
 
 // used for the method + subject name
@@ -47,24 +40,23 @@ fn get_string<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a str, ParsingError> {
     let start = src.position() as usize;
     let end = src.get_ref().len() - 1;
     for i in start..end {
-        
         // hit whitespace
         if src.get_ref()[i] == b' ' {
             src.set_position((i + 1) as u64);
             if let Ok(s) = str::from_utf8(&src.get_ref()[start..i]) {
-                return Ok(s)
+                return Ok(s);
             } else {
-                return Err(ParsingError)
+                return Err(ParsingError);
             }
         }
 
         // hit carriage return
-        if src.get_ref()[i] == b'\r' && src.get_ref()[i+1] == b'\n' {
-            src.set_position((i+2) as u64);
+        if src.get_ref()[i] == b'\r' && src.get_ref()[i + 1] == b'\n' {
+            src.set_position((i + 2) as u64);
             if let Ok(s) = str::from_utf8(&src.get_ref()[start..i]) {
-                return Ok(s)
+                return Ok(s);
             } else {
-                return Err(ParsingError)
+                return Err(ParsingError);
             }
         }
     }
@@ -75,16 +67,14 @@ fn get_string<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a str, ParsingError> {
 // used for the payload size
 fn get_int(src: &mut Cursor<&[u8]>) -> Result<u32, ParsingError> {
     if !src.has_remaining() {
-        return Err(ParsingError)
+        return Err(ParsingError);
     }
 
     let pos = src.position() as usize;
     let len = src.get_ref().len();
     if src.get_ref()[pos] == b' ' {
         src.advance(1);
-    } else if (pos < len)
-        && (src.get_ref()[pos] == b'\r')
-        && (src.get_ref()[pos+1] == b'\n') {
+    } else if (pos < len) && (src.get_ref()[pos] == b'\r') && (src.get_ref()[pos + 1] == b'\n') {
         src.advance(2);
     }
 
@@ -101,12 +91,11 @@ fn get_bulk<'a>(src: &mut Cursor<&'a [u8]>) -> Result<Bytes, ParsingError> {
     let start = src.position() as usize;
     let end = src.get_ref().len() - 1;
     for i in start..end {
-        if src.get_ref()[i] == b'\r' && src.get_ref()[i+1] == b'\n' {
-            src.set_position((i+2) as u64);
+        if src.get_ref()[i] == b'\r' && src.get_ref()[i + 1] == b'\n' {
+            src.set_position((i + 2) as u64);
             let b = BytesMut::from(&src.get_ref()[start..i]);
             return Ok(b.freeze());
-        } 
-
+        }
     }
     Err(ParsingError)
 }
@@ -115,9 +104,9 @@ fn next_line(src: &mut Cursor<&[u8]>) -> Result<(), ParsingError> {
     let start = src.position() as usize;
     let end = src.get_ref().len() - 1;
     for i in start..end {
-        if src.get_ref()[i] == b'\r' && src.get_ref()[i+1] == b'\n' {
-            src.set_position((i+2) as u64);
-            return Ok(())
+        if src.get_ref()[i] == b'\r' && src.get_ref()[i + 1] == b'\n' {
+            src.set_position((i + 2) as u64);
+            return Ok(());
         }
     }
     Err(ParsingError)
@@ -126,15 +115,15 @@ fn next_line(src: &mut Cursor<&[u8]>) -> Result<(), ParsingError> {
 impl Parser {
     pub fn check(buf: &mut Cursor<&[u8]>) -> Result<(), ParsingError> {
         let method = get_string(buf)?;
-        let subject = get_string(buf)?;
+        let _ = get_string(buf)?;
 
         match method {
             "PUB" => {
-                let size = get_int(buf)?;
-                next_line(buf);
-                let b = get_bulk(buf)?;
+                let _ = get_int(buf)?;
+                next_line(buf)?;
+                let _ = get_bulk(buf)?;
                 Ok(())
-            },
+            }
             "SUB" => Ok(()),
             "MAKE" => Ok(()),
             "DEL" => Ok(()),
@@ -152,7 +141,7 @@ impl Parser {
                 next_line(buf)?;
                 let bytes = get_bulk(buf)?;
                 Ok(MethodFrames::Publish(subject, size, bytes))
-            },
+            }
             "SUB" => Ok(MethodFrames::Subscribe(subject)),
             "MAKE" => Ok(MethodFrames::Make(subject)),
             "DEL" => Ok(MethodFrames::Delete(subject)),
@@ -190,7 +179,6 @@ mod tests {
             let r = get_int(&mut cursor).unwrap();
             assert_eq!(i, r);
         }
-
     }
 
     #[test]
@@ -207,7 +195,7 @@ mod tests {
         let s = b"foo\r\nbar baz\r\n";
         let mut cursor = Cursor::new(&s[..]);
         let _ = next_line(&mut cursor).unwrap();
-        
+
         let second_ln_words = vec!["bar", "baz"];
         for word in second_ln_words {
             let w = get_string(&mut cursor).unwrap();
@@ -244,7 +232,8 @@ mod tests {
         assert!(Parser::check(&mut pub_cursor).is_ok());
 
         pub_cursor.set_position(0);
-        let expected = MethodFrames::Publish("test_topic".to_string(), 5, Bytes::from("my test payload"));
+        let expected =
+            MethodFrames::Publish("test_topic".to_string(), 5, Bytes::from("my test payload"));
         assert_eq!(Parser::parse(&mut pub_cursor).unwrap(), expected);
     }
 
@@ -258,5 +247,4 @@ mod tests {
         let expected = MethodFrames::Subscribe("test_topic".to_string());
         assert_eq!(Parser::parse(&mut sub_cursor).unwrap(), expected);
     }
-
 }

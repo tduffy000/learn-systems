@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Semaphore, broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio::time::{self, Duration};
 
 use crate::client::Subscriber;
@@ -14,7 +14,6 @@ const CHAN_CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 struct Handler {
-
     // a shared handle to the message store
     message_store: MessageStore,
 
@@ -26,7 +25,6 @@ struct Handler {
     shutdown: Shutdown,
 }
 
-
 #[derive(Debug)]
 struct MessageStoreDropGuard {
     store: MessageStore,
@@ -36,7 +34,6 @@ struct MessageStoreDropGuard {
 pub struct MessageStore {
     state: Arc<Mutex<State>>,
 }
-
 
 #[derive(Debug)]
 struct State {
@@ -48,7 +45,6 @@ struct State {
 /// Graceful shutdown handled via mpsc channels.
 #[derive(Debug)]
 struct Server {
-
     message_store: MessageStoreDropGuard,
 
     listener: TcpListener,
@@ -65,23 +61,22 @@ struct Server {
 
 impl Default for State {
     fn default() -> Self {
-        Self { topics: HashMap::default() }
+        Self {
+            topics: HashMap::default(),
+        }
     }
 }
 
 impl Handler {
-
     async fn run(&mut self) -> crate::Result<()> {
-
         while !self.shutdown.is_shutdown() {
-
             let maybe_method = tokio::select! {
                 res = self.connection.read() => res?,
                 _ = self.shutdown.recv() => {
                     return Ok(());
                 }
             };
-    
+
             let method = match maybe_method {
                 Some(m) => m,
                 None => return Ok(()),
@@ -91,7 +86,6 @@ impl Handler {
         }
         Ok(())
     }
-
 }
 
 impl Drop for Handler {
@@ -102,9 +96,7 @@ impl Drop for Handler {
 
 impl Server {
     async fn run(&mut self) -> crate::Result<()> {
-
         loop {
-         
             // TODO: semaphore for maximum connections
 
             let socket = self.accept().await?;
@@ -113,15 +105,15 @@ impl Server {
                 message_store: self.message_store.store(),
 
                 connection: Connection::new(socket),
-                
-                // pass the semaphore to connection to give 
+
+                // pass the semaphore to connection to give
                 // the permit back when it's finished
                 limit_connections: self.limit_connections.clone(),
 
                 shutdown: Shutdown::new(self.shutdown_sender.subscribe()),
             };
 
-            tokio::spawn( async move {
+            tokio::spawn(async move {
                 if let Err(e) = handler.run().await {
                     println!("error")
                 }
@@ -130,16 +122,13 @@ impl Server {
     }
 
     async fn accept(&self) -> crate::Result<TcpStream> {
-
         let mut backoff = 1;
         loop {
             match self.listener.accept().await {
-                Ok((socket, _)) => {
-                    return Ok(socket)
-                },
+                Ok((socket, _)) => return Ok(socket),
                 Err(e) => {
                     if backoff > 64 {
-                        return Err(e.into())
+                        return Err(e.into());
                     }
                 }
             }
@@ -147,7 +136,6 @@ impl Server {
             time::sleep(Duration::from_secs(backoff)).await;
             backoff *= 2;
         }
-
     }
 }
 
@@ -173,8 +161,8 @@ impl MessageStore {
                 let (tx, _) = broadcast::channel(CHAN_CAPACITY);
                 s.topics.insert(topic, tx);
                 Ok(())
-            },
-            Err(_) => Err(())
+            }
+            Err(_) => Err(()),
         }
     }
 
@@ -184,8 +172,8 @@ impl MessageStore {
             Ok(mut s) => {
                 s.topics.remove(&topic);
                 Ok(())
-            },
-            Err(_) => Err(())
+            }
+            Err(_) => Err(()),
         }
     }
 
@@ -196,38 +184,29 @@ impl MessageStore {
     ) -> Result<Subscriber, ()> {
         let topic = Topic::new(topic_name);
         match self.state.try_lock() {
-            Ok(s) => {
-                match s.topics.get(&topic) {
-                    Some(chan) => {
-                        let rx = chan.subscribe();
-                        let sub = Subscriber::new(connection, rx);
-                        Ok(sub)
-                    },
-                    None => Err(())
+            Ok(s) => match s.topics.get(&topic) {
+                Some(chan) => {
+                    let rx = chan.subscribe();
+                    let sub = Subscriber::new(connection, rx);
+                    Ok(sub)
                 }
+                None => Err(()),
             },
-            Err(_) => Err(())
+            Err(_) => Err(()),
         }
     }
 
-    pub fn publish(
-        &self,
-        topic_name: String,
-        msg: Message
-    ) -> Result<(), ()> {
+    pub fn publish(&self, topic_name: String, msg: Message) -> Result<(), ()> {
         let topic = Topic::new(topic_name);
         match self.state.try_lock() {
-            Ok(s) => {
-                match s.topics.get(&topic) {
-                    Some(ch) => {
-                        ch.send(msg).unwrap();
-                        Ok(())
-                    },
-                    None => Err(())
-                } 
+            Ok(s) => match s.topics.get(&topic) {
+                Some(ch) => {
+                    ch.send(msg).unwrap();
+                    Ok(())
+                }
+                None => Err(()),
             },
-            Err(_) => Err(())
+            Err(_) => Err(()),
         }
     }
-
 }
