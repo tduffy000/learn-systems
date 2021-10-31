@@ -3,9 +3,8 @@ People (like me) like to ride buses. They take you places. You know where they'r
 
 
 ```bash
-nc -C localhost 8080
+echo -ne 'MAKE test_topic\r\n' | netcat localhost 8080
 ```
-The `-C` turns a new line into `\n\r` on stdin. 
 
 # Resources 
 - https://www.ibm.com/cloud/learn/message-brokers

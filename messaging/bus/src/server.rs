@@ -1,9 +1,10 @@
-use std::sync::Arc;
 use std::future::Future;
-use tokio::time::{self, Duration};
+use std::sync::Arc;
+
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, Semaphore};
-use tracing::{debug, error, info, instrument};
+use tokio::time::{self, Duration};
+use tracing::{error, info};
 
 use crate::broker::{MessageStore, MessageStoreDropGuard};
 use crate::connection::{Connection, Shutdown};
@@ -21,7 +22,6 @@ struct Handler {
     // handle shutdown signals
     shutdown: Shutdown,
 }
-
 
 /// The main server running and listening to connections
 /// will limit the number of active ones using a semaphore permit.
@@ -44,9 +44,10 @@ pub struct Server {
 
 /// Main entrypoint
 pub async fn run(listener: TcpListener, shutdown: impl Future, n_permits: usize) {
-
     let (notify_shutdown, _) = broadcast::channel(1);
     let (shutdown_complete_tx, shutdown_complete_rx) = mpsc::channel(1);
+
+    info!(permits = n_permits);
 
     let mut server = Server {
         message_store: MessageStoreDropGuard::new(),
@@ -67,9 +68,7 @@ pub async fn run(listener: TcpListener, shutdown: impl Future, n_permits: usize)
             info!("shutting down");
         }
     }
-
 }
-
 
 impl Handler {
     async fn run(&mut self) -> crate::Result<()> {
@@ -88,7 +87,6 @@ impl Handler {
 
             let method = Method::from_frames(method_frames);
             let name = method.get_name();
-            info!(m = name, "got method");
 
             // TODO: apply method
         }
@@ -103,13 +101,13 @@ impl Drop for Handler {
 }
 
 impl Server {
-
     pub async fn run(&mut self) -> crate::Result<()> {
-
         loop {
             // TODO: semaphore for maximum connections
 
             let socket = self.accept().await?;
+            info!(?socket);
+
             let mut handler = Handler {
                 // get a handle on the message store
                 message_store: self.message_store.store(),
@@ -125,7 +123,7 @@ impl Server {
 
             tokio::spawn(async move {
                 if let Err(e) = handler.run().await {
-                    println!("error")
+                    error!(cause = %e, "error");
                 }
             });
         }

@@ -1,8 +1,10 @@
-use bytes::{Buf, BytesMut};
 use std::io::Cursor;
+
+use bytes::BytesMut;
 use tokio::io::{AsyncReadExt, BufWriter};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
+use tracing::info;
 
 use crate::protocol::{MethodFrames, Parser};
 
@@ -47,13 +49,19 @@ impl Connection {
     pub fn write() {}
 
     fn parse(&mut self) -> crate::Result<Option<MethodFrames>> {
+        // not enough data for reading yet
+        if self.buffer.len() == 0 {
+            return Ok(None);
+        }
         let mut buf = Cursor::new(&self.buffer[..]);
+
         match Parser::check(&mut buf) {
             Ok(_) => {
                 let len = buf.position() as usize;
                 buf.set_position(0);
                 let method = Parser::parse(&mut buf)?;
-                buf.advance(len);
+                info!(method = ?method);
+                // what do we do with the cursor at this point?
 
                 Ok(Some(method))
             }

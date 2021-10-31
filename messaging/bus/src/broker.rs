@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, mpsc, Semaphore};
-use tokio::time::{self, Duration};
+use tokio::sync::broadcast;
 
 use crate::client::Subscriber;
-use crate::connection::{Connection, Shutdown};
+use crate::connection::Connection;
 use crate::protocol::Message;
 use crate::topic::Topic;
 
@@ -36,7 +34,6 @@ impl Default for State {
 }
 
 impl MessageStoreDropGuard {
-
     pub fn new() -> Self {
         MessageStoreDropGuard {
             store: MessageStore::default(),

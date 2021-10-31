@@ -1,6 +1,5 @@
-use std::fmt;
 use std::io::Cursor;
-use std::{char, str};
+use std::{char, fmt, str};
 
 use bytes::BytesMut;
 use bytes::{Buf, Bytes};
@@ -39,6 +38,7 @@ impl fmt::Display for ParsingError {
 fn get_string<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a str, ParsingError> {
     let start = src.position() as usize;
     let end = src.get_ref().len() - 1;
+
     for i in start..end {
         // hit whitespace
         if src.get_ref()[i] == b' ' {
@@ -74,7 +74,8 @@ fn get_int(src: &mut Cursor<&[u8]>) -> Result<u32, ParsingError> {
     let len = src.get_ref().len();
     if src.get_ref()[pos] == b' ' {
         src.advance(1);
-    } else if (pos < len-1) && (src.get_ref()[pos] == b'\r') && (src.get_ref()[pos + 1] == b'\n') {
+    } else if (pos < len - 1) && (src.get_ref()[pos] == b'\r') && (src.get_ref()[pos + 1] == b'\n')
+    {
         src.advance(2);
     }
 
