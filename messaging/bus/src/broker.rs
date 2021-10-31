@@ -1,212 +1,233 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{Semaphore, broadcast, mpsc};
+use tokio::time::{self, Duration};
 
-use crate::client::{Publisher, Subscriber};
+use crate::client::Subscriber;
+use crate::connection::{Connection, Shutdown};
+use crate::protocol::Message;
 use crate::topic::Topic;
 
-pub struct MessageBroker {
-    sock: TcpListener,
-    taken_names: HashSet<String>,
-    topics: Vec<Topic>,
-    publisher_map: HashMap<String, Arc<Mutex<Vec<Publisher>>>>,
-    subscriber_map: HashMap<String, Arc<Mutex<Vec<Subscriber>>>>,
+const CHAN_CAPACITY: usize = 1024;
+
+#[derive(Debug)]
+struct Handler {
+
+    // a shared handle to the message store
+    message_store: MessageStore,
+
+    connection: Connection,
+
+    limit_connections: Arc<Semaphore>,
+
+    // handle shutdown signals
+    shutdown: Shutdown,
 }
 
-// /add topic
-// /remove topic
-// /register as subscriber
-// /get subscribers
-// /push message
-// /pull message
-impl MessageBroker {
-    pub fn new(sock: TcpListener) -> Self {
-        MessageBroker {
-            sock,
-            taken_names: HashSet::default(),
-            topics: Vec::default(),
-            publisher_map: HashMap::default(),
-            subscriber_map: HashMap::default(),
-        }
-    }
 
-    fn topic_exists(&self, name: &impl ToString) -> bool {
-        self.taken_names.contains(&name.to_string())
-    }
+#[derive(Debug)]
+struct MessageStoreDropGuard {
+    store: MessageStore,
+}
 
-    pub fn add_topic(&mut self, name: impl ToString) -> Result<(), ()> {
-        if self.topic_exists(&name) {
-            Err(())
-        } else {
-            self.taken_names.insert(name.to_string());
-            self.topics.push(Topic::new(name.to_string()));
-            self.subscriber_map
-                .insert(name.to_string(), Arc::new(Mutex::new(Vec::default())));
-            Ok(())
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct MessageStore {
+    state: Arc<Mutex<State>>,
+}
 
-    pub fn remove_topic(&mut self, name: impl ToString) -> Result<(), ()> {
-        if self.topic_exists(&name) {
-            self.taken_names.remove(&name.to_string());
-            let mut i = 0;
-            for (idx, topic) in self.topics.iter().enumerate() {
-                if name.to_string() == topic.0 {
-                    i = idx;
-                    break;
+
+#[derive(Debug)]
+struct State {
+    topics: HashMap<Topic, broadcast::Sender<Message>>,
+}
+
+/// The main server running and listening to connections
+/// will limit the number of active ones using a semaphore permit.
+/// Graceful shutdown handled via mpsc channels.
+#[derive(Debug)]
+struct Server {
+
+    message_store: MessageStoreDropGuard,
+
+    listener: TcpListener,
+
+    // limit the number of connections via a semaphore
+    limit_connections: Arc<Semaphore>,
+
+    // broadcasts a shutdown signal to all active connections
+    shutdown_sender: broadcast::Sender<()>,
+
+    shutdown_complete_tx: mpsc::Sender<()>,
+    shutdown_complete_rx: mpsc::Receiver<()>,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self { topics: HashMap::default() }
+    }
+}
+
+impl Handler {
+
+    async fn run(&mut self) -> crate::Result<()> {
+
+        while !self.shutdown.is_shutdown() {
+
+            let maybe_method = tokio::select! {
+                res = self.connection.read() => res?,
+                _ = self.shutdown.recv() => {
+                    return Ok(());
                 }
-            }
-            self.topics.remove(i);
-            Ok(())
-        } else {
-            Err(())
+            };
+    
+            let method = match maybe_method {
+                Some(m) => m,
+                None => return Ok(()),
+            };
+
+            // TODO: apply method
         }
+        Ok(())
     }
 
-    pub fn register_subscriber(
-        &mut self,
-        topic_name: String,
-        subscriber: Subscriber,
-    ) -> Result<(), ()> {
-        if self.topic_exists(&topic_name) {
-            match self.subscriber_map.get(&topic_name) {
-                Some(subscribers) => {
-                    let subs = subscribers.clone();
-                    let mut v = subs.lock().unwrap();
-                    v.push(subscriber);
-                    Ok(())
-                }
-                None => Err(()),
-            }
-        } else {
-            Err(())
-        }
+}
+
+impl Drop for Handler {
+    fn drop(&mut self) {
+        self.limit_connections.add_permits(1);
     }
+}
 
-    pub fn get_subscribers(&self, topic_name: impl ToString) -> Result<Vec<Subscriber>, ()> {
-        match self.subscriber_map.get(&topic_name.to_string()) {
-            Some(subscribers) => {
-                let subs = subscribers.clone();
-                let v = subs.lock().unwrap();
-                Ok(v.clone())
-            }
-            None => Err(()),
-        }
-    }
-
-    pub fn handle_unsubscribe() {}
-
-    pub fn handle_subscribe() {}
-
-    pub fn handle_publish() {}
-
-    pub fn handle_topic_create() {}
-
-    pub fn handle_topic_destroy() {}
-
-    pub async fn serve(self) {
+impl Server {
+    async fn run(&mut self) -> crate::Result<()> {
 
         loop {
-            match self.sock.accept().await {
-                Ok((mut socket, addr)) => {
-                    println!("new client: {:?}", addr);
-                    tokio::spawn(async move {
-                        let mut buf = vec![0; 1024];
-                        loop {
-                            let n = socket.read(&mut buf).await.expect("read error");
+         
+            // TODO: semaphore for maximum connections
 
-                            if n == 0 {
-                                return;
-                            }
+            let socket = self.accept().await?;
+            let mut handler = Handler {
+                // get a handle on the message store
+                message_store: self.message_store.store(),
 
-                            socket.write_all(&buf[0..n]).await.expect("write error");
-                        }
-                    });
-                },
-                Err(e) => println!("couldn't get client: {:?}", e),
-            }
+                connection: Connection::new(socket),
+                
+                // pass the semaphore to connection to give 
+                // the permit back when it's finished
+                limit_connections: self.limit_connections.clone(),
+
+                shutdown: Shutdown::new(self.shutdown_sender.subscribe()),
+            };
+
+            tokio::spawn( async move {
+                if let Err(e) = handler.run().await {
+                    println!("error")
+                }
+            });
         }
+    }
+
+    async fn accept(&self) -> crate::Result<TcpStream> {
+
+        let mut backoff = 1;
+        loop {
+            match self.listener.accept().await {
+                Ok((socket, _)) => {
+                    return Ok(socket)
+                },
+                Err(e) => {
+                    if backoff > 64 {
+                        return Err(e.into())
+                    }
+                }
+            }
+
+            time::sleep(Duration::from_secs(backoff)).await;
+            backoff *= 2;
+        }
+
     }
 }
 
-#[cfg(test)]
-mod tests {
+impl MessageStoreDropGuard {
+    pub fn store(&self) -> MessageStore {
+        // return a clone of the Arc around the state
+        // i.e. increment the Ref Count
+        self.store.clone()
+    }
+}
 
-    use super::*;
-
-    fn seed_broker(broker: &mut MessageBroker) {
-        let names = vec![
-            "test_topic_1".to_string(),
-            "test_topic_2".to_string(),
-            "test_topic_3".to_string(),
-        ];
-        for name in names {
-            let _ = broker.add_topic(name);
+impl MessageStore {
+    pub fn new() -> Self {
+        MessageStore {
+            state: Arc::new(Mutex::new(State::default())),
         }
     }
 
-    #[tokio::test]
-    async fn test_topic_exists() {
-        let socket = TcpListener::bind("0.0.0.0:8080").await.unwrap();
-        let mut broker = MessageBroker::new(socket);
-        seed_broker(&mut broker);
-        assert!(broker.topic_exists(&"test_topic_1"));
-        assert!(!broker.topic_exists(&"no_such_topic"))
-    }
-
-    #[tokio::test]
-    async fn test_add_topic() {
-        let socket = TcpListener::bind("0.0.0.0:8081").await.unwrap();
-        let mut broker = MessageBroker::new(socket);
-        seed_broker(&mut broker);
-        assert!(broker.add_topic("test_topic_4").is_ok());
-        assert!(broker.topic_exists(&"test_topic_4"))
-    }
-
-    #[tokio::test]
-    async fn test_remove_topic() {
-        let socket = TcpListener::bind("0.0.0.0:8082").await.unwrap();
-        let mut broker = MessageBroker::new(socket);
-        seed_broker(&mut broker);
-        assert!(broker.remove_topic("test_topic_3").is_ok());
-        assert!(broker.remove_topic("no_such_topic").is_err());
-        assert!(!broker.topic_exists(&"test_topic_3"));
-    }
-
-    #[tokio::test]
-    async fn test_register_subscriber() {
-        let socket = TcpListener::bind("0.0.0.0:8085").await.unwrap();
-        let mut broker = MessageBroker::new(socket);
-        seed_broker(&mut broker);
-        let subscriber = Subscriber::new();
-        assert!(broker
-            .register_subscriber("test_topic_1".to_string(), subscriber)
-            .is_ok());
-        assert!(broker
-            .register_subscriber("no_such_topic".to_string(), subscriber.clone())
-            .is_err());
-
-        match broker.subscriber_map.get("test_topic_1") {
-            Some(subs) => {
-                let data = subs.lock().unwrap();
-                assert_eq!(data.to_vec(), vec![subscriber]);
-            }
-            None => assert!(1 == 0),
+    pub fn add_topic(&self, name: impl ToString) -> Result<(), ()> {
+        let topic = Topic::new(name);
+        match self.state.try_lock() {
+            Ok(mut s) => {
+                let (tx, _) = broadcast::channel(CHAN_CAPACITY);
+                s.topics.insert(topic, tx);
+                Ok(())
+            },
+            Err(_) => Err(())
         }
     }
 
-    #[tokio::test]
-    async fn test_get_subscribers() {
-        let socket = TcpListener::bind("0.0.0.0:8086").await.unwrap();
-        let mut broker = MessageBroker::new(socket);
-        seed_broker(&mut broker);
-        let subscriber = Subscriber::new();
-        assert!(broker
-            .register_subscriber("test_topic_1".to_string(), subscriber)
-            .is_ok());
-        let subs = broker.get_subscribers("test_topic_1").unwrap();
-        assert_eq!(subs, vec![subscriber]);
+    pub fn remove_topic(&self, name: impl ToString) -> Result<(), ()> {
+        let topic = Topic::new(name);
+        match self.state.try_lock() {
+            Ok(mut s) => {
+                s.topics.remove(&topic);
+                Ok(())
+            },
+            Err(_) => Err(())
+        }
     }
+
+    pub fn subscribe(
+        &self,
+        topic_name: impl ToString,
+        connection: Connection,
+    ) -> Result<Subscriber, ()> {
+        let topic = Topic::new(topic_name);
+        match self.state.try_lock() {
+            Ok(s) => {
+                match s.topics.get(&topic) {
+                    Some(chan) => {
+                        let rx = chan.subscribe();
+                        let sub = Subscriber::new(connection, rx);
+                        Ok(sub)
+                    },
+                    None => Err(())
+                }
+            },
+            Err(_) => Err(())
+        }
+    }
+
+    pub fn publish(
+        &self,
+        topic_name: String,
+        msg: Message
+    ) -> Result<(), ()> {
+        let topic = Topic::new(topic_name);
+        match self.state.try_lock() {
+            Ok(s) => {
+                match s.topics.get(&topic) {
+                    Some(ch) => {
+                        ch.send(msg).unwrap();
+                        Ok(())
+                    },
+                    None => Err(())
+                } 
+            },
+            Err(_) => Err(())
+        }
+    }
+
 }

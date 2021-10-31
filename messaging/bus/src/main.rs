@@ -2,14 +2,13 @@ mod broker;
 mod client;
 mod protocol;
 mod topic;
+mod connection;
 
-use broker::MessageBroker;
-use tokio::net::TcpListener;
+type Error = Box<dyn std::error::Error + Send + Sync>;
+type Result<T> = std::result::Result<T, Error>;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let sock = TcpListener::bind("0.0.0.0:8080").await?;
-    let broker = MessageBroker::new(sock);
-    broker.serve().await;
+async fn main() -> Result<()> {
+    
     Ok(())
 }
