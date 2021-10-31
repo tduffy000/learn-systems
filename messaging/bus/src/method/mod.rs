@@ -10,7 +10,7 @@ pub use publish::Publish;
 mod sub;
 pub use sub::Subscribe;
 
-use crate::{broker::MessageStore, connection::Connection, protocol::MethodFrames};
+use crate::protocol::MethodFrames;
 
 pub enum Method {
     Make(Make),
@@ -20,8 +20,8 @@ pub enum Method {
 }
 
 impl Method {
-    fn from_frame(frame: MethodFrames) -> Self {
-        match frame {
+    pub fn from_frames(frames: MethodFrames) -> Self {
+        match frames {
             MethodFrames::Delete(subject) => Method::Delete(Delete { subject }),
             MethodFrames::Make(subject) => Method::Make(Make { subject }),
             MethodFrames::Publish(subject, size, bytes) => {
@@ -31,19 +31,19 @@ impl Method {
         }
     }
 
-    pub async fn apply(
-        self,
-        store: &MessageStore,
-        conn: &mut Connection,
-        // TODO: shutdown channel
-    ) -> crate::Result<()> {
-        match self {
-            Method::Make(m) => m.apply(store, conn).await,
-            Method::Delete(m) => m.apply(store, conn).await,
-            Method::Publish(m) => m.apply(store, conn).await,
-            Method::Subscribe(m) => m.apply(store, conn).await,
-        }
-    }
+    // pub async fn apply(
+    //     self,
+    //     store: &MessageStore,
+    //     conn: &mut Connection,
+    //     // TODO: shutdown channel
+    // ) -> crate::Result<()> {
+    //     match self {
+    //         Method::Make(m) => m.apply(store, conn).await,
+    //         Method::Delete(m) => m.apply(store, conn).await,
+    //         Method::Publish(m) => m.apply(store, conn).await,
+    //         Method::Subscribe(m) => m.apply(store, conn).await,
+    //     }
+    // }
 
     pub fn get_name(&self) -> &str {
         match self {

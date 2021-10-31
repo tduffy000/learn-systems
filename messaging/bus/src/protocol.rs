@@ -74,7 +74,7 @@ fn get_int(src: &mut Cursor<&[u8]>) -> Result<u32, ParsingError> {
     let len = src.get_ref().len();
     if src.get_ref()[pos] == b' ' {
         src.advance(1);
-    } else if (pos < len) && (src.get_ref()[pos] == b'\r') && (src.get_ref()[pos + 1] == b'\n') {
+    } else if (pos < len-1) && (src.get_ref()[pos] == b'\r') && (src.get_ref()[pos + 1] == b'\n') {
         src.advance(2);
     }
 
