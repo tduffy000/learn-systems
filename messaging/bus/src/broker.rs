@@ -1,12 +1,11 @@
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use tokio::sync::broadcast;
+use tokio::sync::broadcast::{self, Receiver};
 
-use crate::client::Subscriber;
-use crate::connection::Connection;
-use crate::protocol::Message;
-use crate::topic::Topic;
+use crate::{protocol::Message, topic::Topic};
 
 const CHAN_CAPACITY: usize = 1024;
 
@@ -47,66 +46,72 @@ impl MessageStoreDropGuard {
     }
 }
 
-impl MessageStore {
-    pub fn new() -> Self {
-        MessageStore {
-            state: Arc::new(Mutex::new(State::default())),
-        }
-    }
+#[derive(Debug)]
+pub enum MessageStoreError {
+    AddTopic,
+    RemoveTopic,
+    Subscribe,
+    Publish,
+}
 
-    pub fn add_topic(&self, name: impl ToString) -> Result<(), ()> {
+impl Error for MessageStoreError {}
+
+impl std::fmt::Display for MessageStoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MessageStoreError")
+    }
+}
+
+impl MessageStore {
+
+    pub fn add_topic(&self, name: impl ToString) -> crate::Result<Topic> {
         let topic = Topic::new(name);
         match self.state.try_lock() {
             Ok(mut s) => {
                 let (tx, _) = broadcast::channel(CHAN_CAPACITY);
-                s.topics.insert(topic, tx);
-                Ok(())
+                s.topics.insert(topic.clone(), tx);
+                Ok(topic)
             }
-            Err(_) => Err(()),
+            Err(_) => Err(Box::new(MessageStoreError::AddTopic)),
         }
     }
 
-    pub fn remove_topic(&self, name: impl ToString) -> Result<(), ()> {
+    pub fn remove_topic(&self, name: impl ToString) -> crate::Result<Topic> {
         let topic = Topic::new(name);
         match self.state.try_lock() {
             Ok(mut s) => {
                 s.topics.remove(&topic);
-                Ok(())
+                Ok(topic)
             }
-            Err(_) => Err(()),
+            Err(_) => Err(Box::new(MessageStoreError::RemoveTopic)),
         }
     }
 
-    pub fn subscribe(
-        &self,
-        topic_name: impl ToString,
-        connection: Connection,
-    ) -> Result<Subscriber, ()> {
+    pub fn subscribe(&self, topic_name: impl ToString) -> crate::Result<Receiver<Message>> {
         let topic = Topic::new(topic_name);
         match self.state.try_lock() {
             Ok(s) => match s.topics.get(&topic) {
                 Some(chan) => {
                     let rx = chan.subscribe();
-                    let sub = Subscriber::new(connection, rx);
-                    Ok(sub)
+                    Ok(rx)
                 }
-                None => Err(()),
+                None => Err(Box::new(MessageStoreError::Subscribe)),
             },
-            Err(_) => Err(()),
+            Err(_) => Err(Box::new(MessageStoreError::Subscribe)),
         }
     }
 
-    pub fn publish(&self, topic_name: String, msg: Message) -> Result<(), ()> {
+    pub fn publish(&self, topic_name: String, msg: Message) -> crate::Result<Topic> {
         let topic = Topic::new(topic_name);
         match self.state.try_lock() {
             Ok(s) => match s.topics.get(&topic) {
                 Some(ch) => {
                     ch.send(msg).unwrap();
-                    Ok(())
+                    Ok(topic) // TODO: and number of subs
                 }
-                None => Err(()),
+                None => Err(Box::new(MessageStoreError::Publish)),
             },
-            Err(_) => Err(()),
+            Err(_) => Err(Box::new(MessageStoreError::Publish)),
         }
     }
 }

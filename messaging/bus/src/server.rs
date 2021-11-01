@@ -86,9 +86,10 @@ impl Handler {
             };
 
             let method = Method::from_frames(method_frames);
-            let name = method.get_name();
 
-            // TODO: apply method
+            method
+                .apply(&self.message_store, &mut self.connection)
+                .await?;
         }
         Ok(())
     }

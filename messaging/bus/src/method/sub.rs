@@ -5,5 +5,9 @@ pub struct Subscribe {
 }
 
 impl Subscribe {
-    pub async fn apply(self, store: &MessageStore, conn: &mut Connection) {}
+    pub async fn apply(self, store: &MessageStore, _conn: &mut Connection) -> crate::Result<()> {
+        let _ = store.subscribe(self.subject)?;
+        // TODO: provide channel back to connection
+        Ok(())
+    }
 }

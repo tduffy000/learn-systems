@@ -1,7 +1,7 @@
-use std::io::Cursor;
+use std::io::{self, Cursor};
 
-use bytes::BytesMut;
-use tokio::io::{AsyncReadExt, BufWriter};
+use bytes::{Buf, Bytes, BytesMut};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tracing::info;
@@ -46,7 +46,10 @@ impl Connection {
         }
     }
 
-    pub fn write() {}
+    pub async fn write(&mut self, mut buf: Bytes) -> io::Result<()> {
+        self.stream.write_buf(&mut buf).await?;
+        Ok(())
+    }
 
     fn parse(&mut self) -> crate::Result<Option<MethodFrames>> {
         // not enough data for reading yet
@@ -61,11 +64,11 @@ impl Connection {
                 buf.set_position(0);
                 let method = Parser::parse(&mut buf)?;
                 info!(method = ?method);
-                // what do we do with the cursor at this point?
+                self.buffer.advance(len);
 
                 Ok(Some(method))
             }
-            Err(e) => Err("parsing error!".into()),
+            Err(_) => Err("parsing error!".into()),
         }
     }
 }

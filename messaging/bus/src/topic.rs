@@ -1,8 +1,8 @@
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct Topic(pub String);
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Topic(pub String);
 
 impl Topic {
-    pub(crate) fn new(name: impl ToString) -> Self {
+    pub fn new(name: impl ToString) -> Self {
         Topic(name.to_string())
     }
 }

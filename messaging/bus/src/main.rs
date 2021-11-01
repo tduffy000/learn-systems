@@ -3,7 +3,6 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 mod broker;
-mod client;
 mod connection;
 mod method;
 mod protocol;
