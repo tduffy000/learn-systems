@@ -24,9 +24,7 @@ impl Method {
         match frames {
             MethodFrames::Delete(subject) => Method::Delete(Delete { subject }),
             MethodFrames::Make(subject) => Method::Make(Make { subject }),
-            MethodFrames::Publish(subject, _, bytes) => {
-                Method::Publish(Publish { subject, bytes })
-            }
+            MethodFrames::Publish(subject, _, bytes) => Method::Publish(Publish { subject, bytes }),
             MethodFrames::Subscribe(subject) => Method::Subscribe(Subscribe { subject }),
         }
     }

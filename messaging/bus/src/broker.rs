@@ -63,7 +63,6 @@ impl std::fmt::Display for MessageStoreError {
 }
 
 impl MessageStore {
-
     pub fn add_topic(&self, name: impl ToString) -> crate::Result<Topic> {
         let topic = Topic::new(name);
         match self.state.try_lock() {

@@ -1,5 +1,5 @@
-use bytes::Bytes;
 use crate::{broker::MessageStore, connection::Connection};
+use bytes::Bytes;
 
 #[derive(Debug)]
 pub struct Make {
