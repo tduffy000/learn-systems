@@ -10,7 +10,6 @@ use crate::broker::{MessageStore, MessageStoreDropGuard};
 use crate::connection::{Connection, Shutdown};
 use crate::method::Method;
 
-#[derive(Debug)]
 struct Handler {
     // a shared handle to the message store
     message_store: MessageStore,
