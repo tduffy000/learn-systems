@@ -1,8 +1,8 @@
 use std::io::Cursor;
-use std::{char, fmt, str};
+use std::{fmt, str};
 
 use bytes::BytesMut;
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message(usize, pub Bytes);
@@ -11,7 +11,7 @@ pub struct Message(usize, pub Bytes);
 pub enum MethodFrames {
     Make(String),                // MAKE subject\r\n
     Delete(String),              // DEL subject\r\n
-    Publish(String, u32, Bytes), // PUB subject n_bytes\r\n<payload>\r\n
+    Publish(String, Bytes),      // PUB subject \r\n<payload>\r\n
     Subscribe(String),           // SUB subject\r\n
 }
 
@@ -64,29 +64,6 @@ fn get_string<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a str, ParsingError> {
     Err(ParsingError)
 }
 
-// used for the payload size
-fn get_int(src: &mut Cursor<&[u8]>) -> Result<u32, ParsingError> {
-    if !src.has_remaining() {
-        return Err(ParsingError);
-    }
-
-    let pos = src.position() as usize;
-    let len = src.get_ref().len();
-    if src.get_ref()[pos] == b' ' {
-        src.advance(1);
-    } else if (pos < len - 1) && (src.get_ref()[pos] == b'\r') && (src.get_ref()[pos + 1] == b'\n')
-    {
-        src.advance(2);
-    }
-
-    let ch = src.get_u8() as char;
-    if let Some(digit) = ch.to_digit(10) {
-        Ok(digit)
-    } else {
-        Err(ParsingError)
-    }
-}
-
 // used for the payload
 fn get_bulk<'a>(src: &mut Cursor<&'a [u8]>) -> Result<Bytes, ParsingError> {
     let start = src.position() as usize;
@@ -101,18 +78,6 @@ fn get_bulk<'a>(src: &mut Cursor<&'a [u8]>) -> Result<Bytes, ParsingError> {
     Err(ParsingError)
 }
 
-fn next_line(src: &mut Cursor<&[u8]>) -> Result<(), ParsingError> {
-    let start = src.position() as usize;
-    let end = src.get_ref().len() - 1;
-    for i in start..end {
-        if src.get_ref()[i] == b'\r' && src.get_ref()[i + 1] == b'\n' {
-            src.set_position((i + 2) as u64);
-            return Ok(());
-        }
-    }
-    Err(ParsingError)
-}
-
 impl Parser {
     pub fn check(buf: &mut Cursor<&[u8]>) -> Result<(), ParsingError> {
         let method = get_string(buf)?;
@@ -120,8 +85,6 @@ impl Parser {
 
         match method {
             "PUB" => {
-                let _ = get_int(buf)?;
-                next_line(buf)?;
                 let _ = get_bulk(buf)?;
                 Ok(())
             }
@@ -138,10 +101,8 @@ impl Parser {
 
         match method {
             "PUB" => {
-                let size = get_int(buf)?;
-                next_line(buf)?;
                 let bytes = get_bulk(buf)?;
-                Ok(MethodFrames::Publish(subject, size, bytes))
+                Ok(MethodFrames::Publish(subject, bytes))
             }
             "SUB" => Ok(MethodFrames::Subscribe(subject)),
             "MAKE" => Ok(MethodFrames::Make(subject)),
@@ -171,37 +132,12 @@ mod tests {
     }
 
     #[test]
-    fn test_get_int() {
-        let ints = vec![1, 2, 3, 4];
-        let s = b"1 2 3 4\r\n";
-        let mut cursor = Cursor::new(&s[..]);
-
-        for i in ints {
-            let r = get_int(&mut cursor).unwrap();
-            assert_eq!(i, r);
-        }
-    }
-
-    #[test]
     fn test_get_bulk() {
         let s = b"test\r\n";
         let buf = BytesMut::from(&s[0..4]).freeze();
         let mut cursor = Cursor::new(&s[..]);
 
         assert_eq!(buf, get_bulk(&mut cursor).unwrap());
-    }
-
-    #[test]
-    fn test_next_line() {
-        let s = b"foo\r\nbar baz\r\n";
-        let mut cursor = Cursor::new(&s[..]);
-        let _ = next_line(&mut cursor).unwrap();
-
-        let second_ln_words = vec!["bar", "baz"];
-        for word in second_ln_words {
-            let w = get_string(&mut cursor).unwrap();
-            assert_eq!(word, w);
-        }
     }
 
     #[test]
@@ -228,13 +164,13 @@ mod tests {
 
     #[test]
     fn test_pub_method_parsing_from_bytes() {
-        let pub_buf = b"PUB test_topic 5\r\nmy test payload\r\n";
+        let pub_buf = b"PUB test_topic\r\nmy test payload\r\n";
         let mut pub_cursor = Cursor::new(&pub_buf[..]);
         assert!(Parser::check(&mut pub_cursor).is_ok());
 
         pub_cursor.set_position(0);
         let expected =
-            MethodFrames::Publish("test_topic".to_string(), 5, Bytes::from("my test payload"));
+            MethodFrames::Publish("test_topic".to_string(), Bytes::from("my test payload"));
         assert_eq!(Parser::parse(&mut pub_cursor).unwrap(), expected);
     }
 
