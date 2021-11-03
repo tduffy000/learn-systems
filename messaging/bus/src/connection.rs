@@ -1,24 +1,18 @@
 use std::io::{self, Cursor};
-use std::pin::Pin;
 
 use bytes::{Buf, Bytes, BytesMut};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
-use tokio_stream::{Stream, StreamMap};
 use tracing::info;
 
-use crate::protocol::{Message, MethodFrames, Parser};
-use crate::topic::Topic;
-
-type MessageStream = Pin<Box<dyn Stream<Item = Message> + Send>>;
+use crate::protocol::{MethodFrames, Parser};
 
 const BUF_SIZE: usize = 4096;
 
 pub struct Connection {
     stream: BufWriter<TcpStream>,
     buffer: BytesMut,
-    pub subscriptions: StreamMap<Topic, MessageStream>,
 }
 
 #[derive(Debug)]
@@ -33,22 +27,7 @@ impl Connection {
         Connection {
             stream: BufWriter::new(socket),
             buffer: BytesMut::with_capacity(BUF_SIZE),
-            subscriptions: StreamMap::new(),
         }
-    }
-
-    pub fn add_subscription(&mut self, topic: Topic, mut rx: broadcast::Receiver<Message>) {
-        let rx = Box::pin(async_stream::stream! {
-            loop {
-                match rx.recv().await {
-                    Ok(msg) => yield msg,
-                    // If we lagged in consuming messages, just resume.
-                    Err(broadcast::error::RecvError::Lagged(_)) => {}
-                    Err(_) => break,
-                }
-            }
-        });
-        self.subscriptions.insert(topic, rx);
     }
 
     pub async fn read(&mut self) -> crate::Result<Option<MethodFrames>> {
