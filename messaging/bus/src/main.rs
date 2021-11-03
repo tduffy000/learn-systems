@@ -4,6 +4,7 @@ use tracing_subscriber::FmtSubscriber;
 
 mod broker;
 mod connection;
+mod error;
 mod method;
 mod protocol;
 mod server;

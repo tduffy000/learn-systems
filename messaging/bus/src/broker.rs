@@ -1,11 +1,9 @@
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::broadcast::{self, Receiver};
 
-use crate::{protocol::Message, topic::Topic};
+use crate::{error::MessageStoreError, protocol::Message, topic::Topic};
 
 const CHAN_CAPACITY: usize = 1024;
 
@@ -43,22 +41,6 @@ impl MessageStoreDropGuard {
         // return a clone of the Arc around the state
         // i.e. increment the Ref Count
         self.store.clone()
-    }
-}
-
-#[derive(Debug)]
-pub enum MessageStoreError {
-    AddTopic,
-    RemoveTopic,
-    Subscribe,
-    Publish,
-}
-
-impl Error for MessageStoreError {}
-
-impl std::fmt::Display for MessageStoreError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "MessageStoreError")
     }
 }
 

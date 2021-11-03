@@ -1,18 +1,19 @@
 use std::io::Cursor;
-use std::{fmt, str};
+use std::str;
 
-use bytes::BytesMut;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
+
+use crate::error::ParsingError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message(usize, pub Bytes);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MethodFrames {
-    Make(String),                // MAKE subject\r\n
-    Delete(String),              // DEL subject\r\n
-    Publish(String, Bytes),      // PUB subject \r\n<payload>\r\n
-    Subscribe(String),           // SUB subject\r\n
+    Make(String),           // MAKE subject\r\n
+    Delete(String),         // DEL subject\r\n
+    Publish(String, Bytes), // PUB subject \r\n<payload>\r\n
+    Subscribe(String),      // SUB subject\r\n
 }
 
 impl Message {
@@ -22,17 +23,6 @@ impl Message {
 }
 
 pub struct Parser;
-
-#[derive(Debug)]
-pub struct ParsingError;
-
-impl std::error::Error for ParsingError {}
-
-impl fmt::Display for ParsingError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        "parsing error".fmt(fmt)
-    }
-}
 
 // used for the method + subject name
 fn get_string<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a str, ParsingError> {
