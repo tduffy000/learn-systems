@@ -1,0 +1,10 @@
+- caching
+- Databases: Postgres, MySql, etc. (esp the logging + indexing pieces)
+- NewSQL like Spanner + CockroachDB
+- structured logging + tracing
+- K8s nodes (krustlet)
+- Map / Reduce 
+- actor model (concurrency)
+- gRPC
+- reverse proxy
+- docker, containerd, chroot, BSD jail, cgroups
