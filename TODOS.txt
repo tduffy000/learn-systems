@@ -1,4 +1,3 @@
-- caching
 - Databases: Postgres, MySql, etc. (esp the logging + indexing pieces)
 - NewSQL like Spanner + CockroachDB
 - structured logging + tracing
@@ -8,3 +7,4 @@
 - gRPC
 - reverse proxy
 - docker, containerd, chroot, BSD jail, cgroups
+- CDN

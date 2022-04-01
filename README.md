@@ -4,6 +4,7 @@ A collection of my learnings on (distributed) systems fundamentals. And an excus
 ## Contents
 | Concept | Location | Description |
 | :---: | :--------: | :----------- |
+| Caching | [caching](./caching) | Principles of caching data. |
 | Consistent Hashing | [consistent-hashing](./consistent-hashing) | Unit-circle based consistent hashing for data partitioning. |
 | Messaging | [messaging](./messaging) | Inter-system messaging and event buses. |
 | Networking | [networking](./networking) | Networking principles such as the OSI Model. |
